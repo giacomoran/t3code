@@ -70,15 +70,39 @@ Profiles are client-local (stored in client settings, not on the server), capped
 
 ## Updating from upstream
 
+This fork is not auto-updated — that is the trade for it not silently reverting to an
+upstream release (see [Why there is no auto-update](#why-there-is-no-auto-update)).
+Updating is: rebase, rebuild, reinstall.
+
 ```fish
 cd ~/Projects/zxtra/t3code
 git fetch upstream
 git rebase upstream/main zxtra
-pnpm install   # only when the lockfile moved
+pnpm install                     # only when the lockfile moved
+pnpm tc                          # sanity-check the rebase before building
+./zxtra/build-and-install.fish   # build, sign, back up, install
 ```
 
-The changes are deliberately kept small and concentrated so this stays cheap. Most of the
-new code lives in files upstream does not have, which never conflict:
+Run the test suites too if the rebase touched anything the fork edits — see
+[Checks](#building-and-running).
+
+Then quit T3 Code fully (Cmd-Q) and relaunch.
+
+**Confirm you are on the fork:** `Settings → Appearance` shows **Chat font size** and
+**Math (LaTeX) in chat**. Neither exists upstream. The version string still reads
+whatever upstream's does — the fork is not separately versioned, so do not use it to
+tell the builds apart.
+
+`zxtra/build-and-install.fish` refuses to install a bundle that is missing the fork's
+own code, or one that arrived carrying an update feed, so a botched build cannot
+quietly replace a working app. It backs the current app up to
+`/Applications/T3 Code (Alpha).app.<timestamp>.bak`; delete those once you are happy,
+they are ~400MB each.
+
+### What tends to conflict
+
+The changes are deliberately small and concentrated. Most of the new code lives in
+files upstream does not have, which never conflict:
 
 - `apps/web/src/markdown-math-display.ts`
 - `apps/web/src/markdown-math-delimiters.ts`
@@ -93,7 +117,7 @@ Only these upstream files are modified, each in one or two spots:
 | `apps/web/src/appearanceFonts.ts`                           | `--font-size-chat` variable            |
 | `apps/web/src/routes/__root.tsx`                            | applies the chat size                  |
 | `apps/web/src/components/ChatMarkdown.tsx`                  | chat size + math plugins               |
-| `apps/web/src/components/settings/SettingsPanels.tsx`       | the two Appearance rows                |
+| `apps/web/src/components/settings/SettingsPanels.tsx`       | Appearance rows                        |
 | `apps/web/src/components/settings/SettingsFontPreviews.tsx` | chat font preview                      |
 | `apps/web/src/components/settings/settingsSearch.ts`        | makes the rows searchable              |
 | `apps/web/src/components/chat/ChatComposer.tsx`             | renders the profiles bar               |
@@ -104,21 +128,79 @@ Only these upstream files are modified, each in one or two spots:
 If a rebase conflicts, it will almost always be one of the small hunks in the table
 above.
 
+## Toolchain
+
+Two pinned versions, both via asdf:
+
+|      | version | why                                                                 |
+| ---- | ------- | ------------------------------------------------------------------- |
+| Node | 24.19.0 | the repo's `engines` field requires `^24.13.1`                      |
+| Rust | 1.98.0  | the native resource monitor needs >= 1.95 (`sysinfo` refuses older) |
+
+They are pinned in `.tool-versions`, which is deliberately kept out of the fork's git
+diff via `.git/info/exclude`. **Neither file survives a fresh clone**, so after
+re-cloning, recreate them:
+
+```fish
+printf 'nodejs 24.19.0\nrust 1.98.0\n' > .tool-versions
+printf '\n# zxtra-local: keep local toolchain pin out of the fork diff\n.tool-versions\n' >> .git/info/exclude
+```
+
+### Two things that break the desktop build on this machine
+
+Both are handled by `zxtra/build-and-install.fish`; they are written down here because
+they are invisible failures if you ever build by hand.
+
+**`~/.cargo/config.toml` sets a relative `target-dir`.** Cargo resolves it against the
+home directory, so the resource monitor builds into `~/target` while the packaging step
+looks in `native/resource-monitor/target` — and fails with
+`ResourceMonitorBuildOutputMissingError` even though the binary compiled fine. The
+script overrides `CARGO_TARGET_DIR` for the build only; the global config is untouched.
+
+**electron-builder leaves an invalid signature.** With no Apple signing identity on the
+machine it produces a bundle that fails `codesign --verify` with _"code has no resources
+but signature indicates they must be present"_, which macOS refuses to launch on arm64.
+The fix is an ad-hoc re-sign of the staged bundle before installing:
+`codesign --force --deep --sign - "<app>"`.
+
+### Why there is no auto-update
+
+The release build ships `Contents/Resources/app-update.yml` pointing at
+`pingdotgg/t3code`, and electron-updater will happily replace the app with an upstream
+release. A local build never gets that file: the packaging script only writes a publish
+config when `T3CODE_DESKTOP_UPDATE_REPOSITORY` or `GITHUB_REPOSITORY` is set, and
+neither is set locally. So this fork cannot be overwritten by upstream — and equally,
+it will never update itself. The install script asserts the file is absent rather than
+trusting that.
+
+Because the bundle id is unchanged (`com.t3tools.t3code`), the fork shares the release
+app's data directory, so threads and projects carry over. Secrets held by Electron's
+`safeStorage` (saved SSH/connection credentials) are keyed to the code signature, which
+changes from Apple-signed to ad-hoc — expect to re-enter those once. Local environments
+are unaffected.
+
 ## Building and running
 
-This repo needs Node 24 (`.tool-versions` pins 24.19.0 locally and is kept out of the
-fork's diff via `.git/info/exclude`).
+Toolchain first (see above). Then:
 
 ```fish
 pnpm install
-pnpm dev                 # web + server; prints a pairing URL to open
-pnpm dist:desktop:dmg    # build the desktop app to install over the released one
+pnpm dev     # web + server; prints a pairing URL — open it to pair the dev instance
 ```
+
+`pnpm dev` runs against `~/.t3/dev`, isolated from the installed app's data, so it
+cannot disturb your real threads. Auto-update is off in dev builds regardless.
+
+To produce and install the desktop app, use `./zxtra/build-and-install.fish` rather
+than calling `pnpm dist:desktop:dmg:arm64` directly — on its own that build fails, and
+when it succeeds it produces a bundle macOS will not launch. See
+[Two things that break the desktop build](#two-things-that-break-the-desktop-build-on-this-machine).
 
 Checks:
 
 ```fish
-pnpm tc                                        # typecheck
-cd apps/web; and pnpm test                     # unit tests
-cd packages/contracts; and pnpm test
+pnpm tc                                     # typecheck (whole repo)
+cd apps/web; and pnpm test; and cd -
+cd packages/contracts; and pnpm test; and cd -
+cd apps/server; and pnpm test; and cd -     # entrypoint.test.ts fails upstream too
 ```
