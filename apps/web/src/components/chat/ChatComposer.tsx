@@ -289,6 +289,7 @@ import { useEnvironmentQuery } from "~/state/query";
 import { useComposerPathSearch, useDebouncedValue } from "~/state/queries";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
+import { ModelProfilesBar } from "./ModelProfilesBar";
 import {
   type ComposerCommandItem,
   ComposerCommandMenu,
@@ -1075,6 +1076,9 @@ import {
 } from "../../providerInstances";
 import { type AppModelOption, getAppModelOptionsForInstance } from "../../modelSelection";
 import type { UnifiedSettings } from "@t3tools/contracts/settings";
+import type { ModelProfile } from "@t3tools/contracts";
+import { useUpdateClientSettings } from "../../hooks/useSettings";
+import { addModelProfile, createModelProfile, removeModelProfile } from "../../modelProfiles";
 import {
   isVideoAttachment,
   type ChatMessage,
@@ -1647,6 +1651,7 @@ export interface ChatComposerProps {
     options?: { focusComposer?: boolean },
   ) => void;
   onOpenProviderSetup: (instanceId: ProviderInstanceId) => void;
+  onApplyModelProfile: (profile: ModelProfile) => void;
   getModelDisabledReason: (instanceId: ProviderInstanceId, model: string) => string | null;
   toggleInteractionMode: () => void;
   handleRuntimeModeChange: (mode: RuntimeMode) => void;
@@ -1987,6 +1992,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onChangeActivePendingUserInputCustomAnswer,
     onProviderModelSelect,
     onOpenProviderSetup,
+    onApplyModelProfile,
     getModelDisabledReason,
     toggleInteractionMode,
     handleRuntimeModeChange,
@@ -2890,6 +2896,36 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     scheduleComposerFocus();
   };
   const setPromptFromTraitsStable = useStableCallback(setPromptFromTraits);
+
+  // Model profiles are client-scoped, so they persist straight to client
+  // settings; only applying one needs the view's thread routing.
+  const updateClientSettings = useUpdateClientSettings();
+  const modelProfiles = settings.modelProfiles;
+  const modelProfileSelection = useMemo(
+    () => ({
+      instanceId: selectedInstanceId,
+      model: selectedModel,
+      options: composerModelOptions?.[selectedInstanceId],
+    }),
+    [composerModelOptions, selectedInstanceId, selectedModel],
+  );
+  const handleSaveModelProfile = useCallback(
+    (name: string) => {
+      updateClientSettings({
+        modelProfiles: addModelProfile(
+          modelProfiles,
+          createModelProfile(name, modelProfileSelection),
+        ),
+      });
+    },
+    [modelProfileSelection, modelProfiles, updateClientSettings],
+  );
+  const handleDeleteModelProfile = useCallback(
+    (id: string) => {
+      updateClientSettings({ modelProfiles: removeModelProfile(modelProfiles, id) });
+    },
+    [modelProfiles, updateClientSettings],
+  );
 
   const providerTraitsMenuContent = renderProviderTraitsMenuContent({
     provider: selectedProvider,
@@ -5255,6 +5291,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           onProviderModelSelect(instanceId, model);
         }}
         onOpenProviderSetup={onOpenProviderSetup}
+      />
+
+      <ModelProfilesBar
+        profiles={modelProfiles}
+        selection={modelProfileSelection}
+        disabled={isSendBusy}
+        onApply={onApplyModelProfile}
+        onSave={handleSaveModelProfile}
+        onDelete={handleDeleteModelProfile}
       />
 
       <>

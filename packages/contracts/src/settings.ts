@@ -163,6 +163,24 @@ export const TerminalFontSize = Schema.Int.check(
 export type TerminalFontSize = typeof TerminalFontSize.Type;
 const DEFAULT_TERMINAL_FONT_SIZE: TerminalFontSize = 12;
 
+/**
+ * A named model setup: the provider instance, the model, and every trait
+ * (reasoning effort, fast mode, …) captured together so one click restores
+ * the whole combination. Structurally a `ModelSelection` plus an id and a
+ * label — kept as its own schema because profiles are user-authored records
+ * with stable ids, not a transient selection.
+ */
+export const MAX_MODEL_PROFILES = 24;
+export const MODEL_PROFILE_NAME_MAX_LENGTH = 40;
+export const ModelProfile = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString.check(Schema.isMaxLength(MODEL_PROFILE_NAME_MAX_LENGTH)),
+  instanceId: ProviderInstanceId,
+  model: TrimmedNonEmptyString,
+  options: Schema.optionalKey(ProviderOptionSelections),
+});
+export type ModelProfile = typeof ModelProfile.Type;
+
 export const EnvironmentIdentificationMode = Schema.Literals(["artwork", "pill", "none"]);
 export type EnvironmentIdentificationMode = typeof EnvironmentIdentificationMode.Type;
 export const DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE: EnvironmentIdentificationMode = "artwork";
@@ -416,6 +434,9 @@ export const ClientSettingsSchema = Schema.Struct({
   fontSizeChat: ChatFontSize.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_CHAT_FONT_SIZE)),
   ),
+  // One-click model setups shown in the composer footer. Ordered as the user
+  // arranged them; the id is what the UI keys and de-duplicates on.
+  modelProfiles: Schema.Array(ModelProfile).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   fontSizeTerminal: TerminalFontSize.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_TERMINAL_FONT_SIZE)),
   ),
@@ -1635,6 +1656,7 @@ export const ClientSettingsPatch = Schema.Struct({
   fontSizePrompt: Schema.optionalKey(PromptFontSize),
   fontSizeCode: Schema.optionalKey(CodeFontSize),
   fontSizeChat: Schema.optionalKey(ChatFontSize),
+  modelProfiles: Schema.optionalKey(Schema.Array(ModelProfile)),
   fontSizeTerminal: Schema.optionalKey(TerminalFontSize),
   fontFamilyCode: Schema.optionalKey(FontFamilyPreference),
   fontFamilyComposer: Schema.optionalKey(FontFamilyPreference),
