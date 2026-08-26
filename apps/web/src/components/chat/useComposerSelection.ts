@@ -5,6 +5,7 @@ import type { ComposerThreadTarget, DraftSessionState } from "../../composerDraf
 import { useStableCallback } from "../../hooks/useStableCallback";
 import {
   type EnvironmentId,
+  type ModelProfile,
   type ModelSelection,
   ProviderInstanceId,
   type ServerProvider,
@@ -214,6 +215,31 @@ export function useComposerSelection(input: ComposerSelectionInput) {
     if (options?.focusComposer !== false) scheduleComposerFocus();
   };
   const onProviderModelSelectStable = useStableCallback(onProviderModelSelect);
+  /**
+   * Apply a saved profile: the model *and* every trait in one write.
+   *
+   * Model changes route through `onProviderModelSelect` so the provider lock,
+   * continuation-group and started-thread guards all still apply; the traits
+   * then land with `replaceOptions` because a profile is a complete snapshot,
+   * not a partial edit — a profile with no traits must clear the ones the
+   * previous setup left behind rather than inherit them.
+   */
+  const onApplyModelProfile = (profile: ModelProfile) => {
+    if (!activeThread) return;
+    onProviderModelSelect(profile.instanceId, profile.model);
+    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+    setComposerDraftModelSelection(
+      threadRef,
+      {
+        instanceId: profile.instanceId,
+        model: profile.model,
+        ...(profile.options ? { options: profile.options } : {}),
+      },
+      { replaceOptions: true },
+    );
+    scheduleComposerFocus();
+  };
+  const onApplyModelProfileStable = useStableCallback(onApplyModelProfile);
   const onEnvModeChange = (mode: DraftThreadEnvMode) => {
     if (multipleModelSelections !== null) return;
     if (canOverrideServerThreadEnvMode) {
@@ -258,6 +284,7 @@ export function useComposerSelection(input: ComposerSelectionInput) {
     handleInteractionModeChange,
     handleInteractionModeChangeStable,
     handleRuntimeModeChangeStable,
+    onApplyModelProfileStable,
     onEnvModeChangeStable,
     onProviderModelSelectStable,
     onStartFromOriginChange,
