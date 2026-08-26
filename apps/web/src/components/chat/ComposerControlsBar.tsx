@@ -10,8 +10,12 @@ import {
   ComposerModelPicker,
   type RuntimeModeOption,
 } from "./ComposerFooterControls";
+import { ModelProfilesBar } from "./ModelProfilesBar";
+import { updateClientSettings } from "../../hooks/useSettings";
+import { addModelProfile, createModelProfile, removeModelProfile } from "../../modelProfiles";
 import {
   type EnvironmentId,
+  type ModelProfile,
   type ModelSelection,
   type ProviderDriverKind,
   type ProviderInstanceId,
@@ -66,6 +70,8 @@ export function ComposerControlsBar(props: {
   showProviderUnavailable: boolean;
   providerSetupInstanceId: ProviderInstanceId | undefined;
   onOpenProviderSetup: ChatComposerProps["onOpenProviderSetup"];
+  modelProfiles: ReadonlyArray<ModelProfile>;
+  onApplyModelProfile: ChatComposerProps["onApplyModelProfile"];
   providerCatalogPending: boolean;
   isSendBusy: boolean;
   multipleModelsEnabled: boolean;
@@ -110,6 +116,8 @@ export function ComposerControlsBar(props: {
     showProviderUnavailable,
     providerSetupInstanceId,
     onOpenProviderSetup,
+    modelProfiles,
+    onApplyModelProfile,
     providerCatalogPending,
     isSendBusy,
     multipleModelsEnabled,
@@ -179,6 +187,24 @@ export function ComposerControlsBar(props: {
         },
       ]
     : [];
+  // Model profiles are client-scoped, so they persist straight to client
+  // settings; only applying one needs the view's thread routing.
+  const modelProfileSelection = {
+    instanceId: selectedInstanceId,
+    model: selectedModel,
+    options: composerModelOptions?.[selectedInstanceId],
+  };
+  const handleSaveModelProfile = (name: string) => {
+    updateClientSettings({
+      modelProfiles: addModelProfile(
+        modelProfiles,
+        createModelProfile(name, modelProfileSelection),
+      ),
+    });
+  };
+  const handleDeleteModelProfile = (id: string) => {
+    updateClientSettings({ modelProfiles: removeModelProfile(modelProfiles, id) });
+  };
   // Its own element, so typing (which rebuilds the controls around it) leaves it cached.
   const composerModelPicker = (
     <ComposerModelPicker
@@ -261,6 +287,15 @@ export function ComposerControlsBar(props: {
   ) : (
     <>
       {composerModelPicker}
+
+      <ModelProfilesBar
+        profiles={modelProfiles}
+        selection={modelProfileSelection}
+        disabled={isSendBusy}
+        onApply={onApplyModelProfile}
+        onSave={handleSaveModelProfile}
+        onDelete={handleDeleteModelProfile}
+      />
 
       <>
         {restingBlockDefs.map((def, index) => {
