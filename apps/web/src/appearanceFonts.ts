@@ -6,12 +6,15 @@
  */
 
 import {
+  DEFAULT_CHAT_FONT_SIZE,
   DEFAULT_CODE_FONT_SIZE,
   DEFAULT_INTERFACE_FONT_SIZE,
   DEFAULT_PROMPT_FONT_SIZE,
+  MAX_CHAT_FONT_SIZE,
   MAX_CODE_FONT_SIZE,
   MAX_INTERFACE_FONT_SIZE,
   MAX_PROMPT_FONT_SIZE,
+  MIN_CHAT_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
   MIN_INTERFACE_FONT_SIZE,
   MIN_PROMPT_FONT_SIZE,
@@ -83,6 +86,7 @@ export interface AppearanceFontPreferences {
   readonly composer: string;
   readonly sizeInterface: number;
   readonly sizePrompt: number;
+  readonly sizeChat: number;
   readonly sizeCode: number;
   /** Grayscale `antialiased` rendering; false keeps the heavier platform default. */
   readonly smoothing: boolean;
@@ -117,6 +121,7 @@ export function applyAppearanceFontVariables(
 
   root.style.fontSize = `${clampInterfaceFontSize(preferences.sizeInterface)}px`;
   root.style.setProperty("--font-size-prompt", `${clampPromptFontSize(preferences.sizePrompt)}px`);
+  root.style.setProperty("--font-size-chat", `${clampChatFontSize(preferences.sizeChat)}px`);
   const code = clampCodeFontSize(preferences.sizeCode);
   root.style.setProperty("--font-size-code", `${code}px`);
   // The @pierre/diffs surfaces read their own hook for code text.
@@ -149,6 +154,10 @@ export function clampInterfaceFontSize(value: number): number {
 
 export function clampPromptFontSize(value: number): number {
   return clampFontSize(value, MIN_PROMPT_FONT_SIZE, MAX_PROMPT_FONT_SIZE, DEFAULT_PROMPT_FONT_SIZE);
+}
+
+export function clampChatFontSize(value: number): number {
+  return clampFontSize(value, MIN_CHAT_FONT_SIZE, MAX_CHAT_FONT_SIZE, DEFAULT_CHAT_FONT_SIZE);
 }
 
 export function clampCodeFontSize(value: number): number {

@@ -3465,7 +3465,7 @@ function ChatMarkdown({
     <div
       ref={markdownRef}
       className={cn(
-        "chat-markdown w-full min-w-0 text-sm leading-relaxed text-foreground/[calc(80%+var(--appearance-contrast-boost)/5)] [overflow-wrap:anywhere] [word-break:break-word]",
+        "chat-markdown w-full min-w-0 [font-size:var(--font-size-chat,0.875rem)] leading-relaxed text-foreground/[calc(80%+var(--appearance-contrast-boost)/5)] [overflow-wrap:anywhere] [word-break:break-word]",
         className,
       )}
       // Gates the fade-in for blocks that arrive while the response streams.
