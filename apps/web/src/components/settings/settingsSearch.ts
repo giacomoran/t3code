@@ -433,6 +433,11 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: [msg("typography family size composer input")],
   },
   {
+    id: "chat-font-size",
+    title: "Chat font size",
+    to: "/settings/appearance",
+  },
+  {
     id: "code-font",
     title: msg("Code font"),
     to: "/settings/appearance",

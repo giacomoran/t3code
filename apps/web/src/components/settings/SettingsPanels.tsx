@@ -572,6 +572,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ? [gt("Composer context")]
       : []),
     ...getChangedTypographySettingLabels(settings, messages),
+    ...(settings.fontSizeChat !== DEFAULT_UNIFIED_SETTINGS.fontSizeChat
+      ? [gt("Chat font size")]
+      : []),
     ...(settings.diffFilesCollapsed !== DEFAULT_UNIFIED_SETTINGS.diffFilesCollapsed
       ? [gt("Default diff file state")]
       : []),
@@ -771,6 +774,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       fontSizeInterface: DEFAULT_UNIFIED_SETTINGS.fontSizeInterface,
       fontSizePrompt: DEFAULT_UNIFIED_SETTINGS.fontSizePrompt,
       fontSizeCode: DEFAULT_UNIFIED_SETTINGS.fontSizeCode,
+      fontSizeChat: DEFAULT_UNIFIED_SETTINGS.fontSizeChat,
       fontSizeTerminal: DEFAULT_UNIFIED_SETTINGS.fontSizeTerminal,
       browserDefaultViewport: DEFAULT_UNIFIED_SETTINGS.browserDefaultViewport,
       browserDefaultZoomFactor: DEFAULT_UNIFIED_SETTINGS.browserDefaultZoomFactor,
