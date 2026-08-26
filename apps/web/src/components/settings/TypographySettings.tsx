@@ -2,10 +2,12 @@ import type { ReactNode } from "react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
   DEFAULT_UNIFIED_SETTINGS,
+  MAX_CHAT_FONT_SIZE,
   MAX_CODE_FONT_SIZE,
   MAX_INTERFACE_FONT_SIZE,
   MAX_PROMPT_FONT_SIZE,
   MAX_TERMINAL_FONT_SIZE,
+  MIN_CHAT_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
   MIN_INTERFACE_FONT_SIZE,
   MIN_PROMPT_FONT_SIZE,
@@ -27,7 +29,12 @@ import {
   TYPOGRAPHY_ADVANCED_STORAGE_KEY,
 } from "../../appearanceFonts";
 import { AdvancedSettings } from "./AdvancedSettings";
-import { CodeFontPreview, PromptFontPreview, TerminalFontPreview } from "./SettingsFontPreviews";
+import {
+  ChatFontPreview,
+  CodeFontPreview,
+  PromptFontPreview,
+  TerminalFontPreview,
+} from "./SettingsFontPreviews";
 import { discoverInstalledFonts, FontFamilyPicker, useFontEnumeration } from "./FontFamilyPicker";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
@@ -159,6 +166,58 @@ function CodeFontRow({
   );
 }
 
+function ChatFontSizeRow() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  return (
+    <SettingsRow
+      {...searchableSetting("chat-font-size")}
+      title="Chat font size"
+      description="Message text in the chat transcript. Code blocks follow the code font size."
+      resetAction={
+        settings.fontSizeChat !== DEFAULT_UNIFIED_SETTINGS.fontSizeChat ? (
+          <SettingResetButton
+            label="chat font size"
+            onClick={() => updateSettings({ fontSizeChat: DEFAULT_UNIFIED_SETTINGS.fontSizeChat })}
+          />
+        ) : null
+      }
+      control={
+        <Select
+          value={String(settings.fontSizeChat)}
+          onValueChange={(next) => {
+            if (typeof next !== "string") return;
+            const parsed = Number(next);
+            if (
+              Number.isInteger(parsed) &&
+              parsed >= MIN_CHAT_FONT_SIZE &&
+              parsed <= MAX_CHAT_FONT_SIZE
+            ) {
+              updateSettings({ fontSizeChat: parsed });
+            }
+          }}
+        >
+          <SelectTrigger className="w-22 shrink-0" aria-label="Chat font size">
+            <SelectValue>{settings.fontSizeChat} px</SelectValue>
+          </SelectTrigger>
+          <SelectPopup align="end" alignItemWithTrigger={false}>
+            {Array.from(
+              { length: MAX_CHAT_FONT_SIZE - MIN_CHAT_FONT_SIZE + 1 },
+              (_, index) => MIN_CHAT_FONT_SIZE + index,
+            ).map((px) => (
+              <SelectItem hideIndicator key={px} value={String(px)}>
+                {px} px
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
+      }
+    >
+      <ChatFontPreview />
+    </SettingsRow>
+  );
+}
+
 function TerminalFontRow() {
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
@@ -260,6 +319,7 @@ function FontSettingsGroup() {
     <>
       <InterfaceFontRow />
       <PromptFontRow />
+      <ChatFontSizeRow />
       <CodeFontRow />
       <TerminalFontRow />
     </>
@@ -293,6 +353,7 @@ function SimpleFontRows() {
   return (
     <>
       <InterfaceFontRow preview={<PromptFontPreview />} />
+      <ChatFontSizeRow />
       <CodeFontRow
         title="Monospace font"
         description="Code blocks, diffs, file previews, and the terminal."
