@@ -76,12 +76,43 @@ Updating is: rebase, rebuild, reinstall.
 
 ```fish
 cd ~/Projects/zxtra/t3code
-git fetch upstream
+./zxtra/check-upstream.fish      # pre-flight: read this before deciding
 git rebase upstream/main zxtra
 pnpm install                     # only when the lockfile moved
 pnpm tc                          # sanity-check the rebase before building
 ./zxtra/build-and-install.fish   # build, sign, back up, install
 ```
+
+### The pre-flight check
+
+`zxtra/check-upstream.fish` fetches and reports; it changes nothing. Run it — or hand
+it to an agent — before committing to an update. Takes a second or two.
+
+A clean rebase is not the same as a working one. Everything the fork adds is small and
+self-contained, so git will usually merge it without complaint; what actually breaks it
+is upstream _renaming a field the fork reads_ or _changing a helper it calls_. That
+produces no conflict and often no type error in the files the fork touched — the
+feature just quietly stops working. So the check verifies those assumptions by name:
+
+1. **What upstream did** — commit count, date span, which areas moved.
+2. **Collision risk** — upstream commits to the files the fork also edits, with
+   subjects, so you can see whether they are near the fork's hunks.
+3. **Path collisions** — upstream adding a file the fork also adds.
+4. **Load-bearing assumptions** — every upstream symbol the fork depends on, checked
+   against the upstream tree. A miss names the symbol, the file, and what it holds up.
+5. **Dependency drift** — the markdown and indexing packages the fork leans on. A
+   `@ff-labs/fff-node` bump is the signal to re-check the index-scan fix, which exists
+   to work around that library's behaviour.
+6. **Did upstream build it themselves?** — a hit means the fork's patch may now be
+   redundant, and carrying it forward could conflict in behaviour rather than in text.
+
+Exit codes: `0` proceed, `2` stop and read section 4 or 3 first.
+
+**A pass is not a promise.** It confirms the things the fork knows it depends on still
+exist — it cannot see a field that kept its name but changed meaning, or a turn state
+that gained a new value. Sections 1 and 2 are there to be read by a human or an agent,
+not just skimmed for the verdict. After any non-trivial rebase, run the suites and
+actually exercise the four features before trusting the build.
 
 Run the test suites too if the rebase touched anything the fork edits — see
 [Checks](#building-and-running).
