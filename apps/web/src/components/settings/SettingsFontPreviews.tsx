@@ -1,6 +1,7 @@
 import type { ServerProviderSkill } from "@t3tools/contracts";
 import { preloadPatchFile } from "@pierre/diffs/ssr";
 import { useEffect, useRef, useState } from "react";
+import ChatMarkdown from "../ChatMarkdown";
 import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "../ComposerPromptEditor";
 import { EMPTY_COMPOSER_CONTEXT_RECORDS } from "../composerContextPresentation";
 import { terminalThemeFromApp } from "../ThreadTerminalDrawer";
@@ -44,6 +45,24 @@ export function PromptFontPreview() {
         onChange={onChange}
         onPaste={noop}
       />
+    </div>
+  );
+}
+
+// Assistant prose the way the transcript renders it: a paragraph, a list, and
+// inline code spans, so the size choice is judged on real text.
+const CHAT_PREVIEW_TEXT = [
+  "Rebased onto `upstream/main` and re-ran the suite — all green.",
+  "",
+  "- Cache hit rate rose from 62% to 94%",
+  "- The p95 for `resolveModel` dropped below 5ms",
+].join("\n");
+
+/** The real chat renderer, so the row shows exactly what a message looks like. */
+export function ChatFontPreview() {
+  return (
+    <div className="mt-1 mb-2 rounded-lg border border-border bg-background px-3 py-2">
+      <ChatMarkdown text={CHAT_PREVIEW_TEXT} cwd={undefined} />
     </div>
   );
 }
