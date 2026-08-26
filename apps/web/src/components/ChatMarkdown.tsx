@@ -102,12 +102,16 @@ import ReactMarkdown from "react-markdown";
 import { toHtml } from "hast-util-to-html";
 import { createIncrementalMarkdownPlugin } from "../markdown-incremental";
 import { defaultUrlTransform } from "react-markdown";
+import rehypeKatex from "rehype-katex";
 import { parseAssistantCitationHref } from "@t3tools/shared/assistantCitations";
 import { parseComposerContextHref } from "@t3tools/shared/composerContextReferences";
 import { parseThreadLinkHref } from "@t3tools/shared/threadLinks";
 import { AssistantCitationChip } from "./chat/AssistantCitationChip";
 import { MarkdownThreadLink } from "./chat/MarkdownThreadLink";
 import { isWindowsAbsolutePath } from "@t3tools/shared/path";
+import remarkMath from "remark-math";
+import { remarkPromoteStandaloneMath } from "../markdown-math-display";
+import { normalizeLatexMathDelimiters } from "../markdown-math-delimiters";
 import {
   artifactTemplateFromHastProperties,
   renderCodexInlineDirectivesAsMarkdown,
@@ -404,6 +408,30 @@ function orderedListGutterStyle(
   const markerWidth = Math.max(String(firstNumber).length, String(lastNumber).length);
   if (markerWidth <= 1) return undefined;
   return { "--list-gutter": `${markerWidth + 2}ch` };
+}
+
+const CHAT_MARKDOWN_MATH_OPTIONS = { singleDollarTextMath: true } as const;
+
+const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_MATH = [
+  ...CHAT_MARKDOWN_REMARK_PLUGINS,
+  [remarkMath, CHAT_MARKDOWN_MATH_OPTIONS],
+  remarkPromoteStandaloneMath,
+] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
+
+const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS_AND_MATH = [
+  ...CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
+  [remarkMath, CHAT_MARKDOWN_MATH_OPTIONS],
+  remarkPromoteStandaloneMath,
+] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
+
+function resolveChatMarkdownRemarkPlugins(
+  lineBreaks: boolean,
+  mathEnabled: boolean,
+): NonNullable<ReactMarkdownOptions["remarkPlugins"]> {
+  if (lineBreaks && mathEnabled) return CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS_AND_MATH;
+  if (lineBreaks && !mathEnabled) return CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS;
+  if (!lineBreaks && mathEnabled) return CHAT_MARKDOWN_REMARK_PLUGINS_WITH_MATH;
+  return CHAT_MARKDOWN_REMARK_PLUGINS;
 }
 
 const GITHUB_ALERT_PRESENTATIONS: Record<
@@ -1898,6 +1926,33 @@ const CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS = [rehypeHeadingIds] satisfies N
   ReactMarkdownOptions["rehypePlugins"]
 >;
 
+// KaTeX runs *after* sanitize on purpose: it emits the MathML and dozens of
+// presentational spans that make up a formula, none of which survive the
+// sanitize schema. Author HTML is still sanitized first, so only markup
+// KaTeX itself generates from already-sanitized math text gets through.
+// It also runs after heading ids, so a heading's slug comes from the formula
+// source rather than KaTeX's rendered markup.
+const CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS_WITH_MATH = [
+  ...CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS,
+  rehypeKatex,
+] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
+
+// Raw HTML disabled: nothing to sanitize, so KaTeX follows heading ids directly.
+const CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS_WITH_MATH = [
+  ...CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS,
+  rehypeKatex,
+] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
+
+function resolveChatMarkdownRehypePlugins(
+  parseRawHtml: boolean,
+  mathEnabled: boolean,
+): NonNullable<ReactMarkdownOptions["rehypePlugins"]> {
+  if (parseRawHtml && mathEnabled) return CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS_WITH_MATH;
+  if (parseRawHtml && !mathEnabled) return CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS;
+  if (!parseRawHtml && mathEnabled) return CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS_WITH_MATH;
+  return CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS;
+}
+
 function MarkdownExternalLinkContent({
   host,
   plainText,
@@ -2349,6 +2404,7 @@ function useChatMarkdownState({
       mediaRequestId.current += 1;
     };
   }, [threadRef?.environmentId, threadRef?.threadId, explicitEnvironmentId, cwd, imageBaseDir]);
+  const mathEnabled = useClientSettings((settings) => settings.chatMathEnabled);
   const createAssetUrl = useAtomQueryRunner(assetEnvironment.createUrl, {
     reportFailure: false,
     refresh: true,
@@ -3451,11 +3507,18 @@ function ChatMarkdown({
     /(?:^|\n) {0,3}(?:`{3}|~{3})/.test(text);
   const remarkPlugins = useMemo(
     () => [
-      ...(lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS),
+      ...resolveChatMarkdownRemarkPlugins(lineBreaks, mathEnabled),
       ...extraRemarkPlugins,
       ...(incrementalParsing ? [createIncrementalMarkdownPlugin()] : []),
     ],
-    [extraRemarkPlugins, incrementalParsing, lineBreaks],
+    [extraRemarkPlugins, incrementalParsing, lineBreaks, mathEnabled],
+  );
+
+  // LaTeX's own delimiters are rewritten to the dollar forms remark-math
+  // parses. Skipped entirely when math is off so the source renders literally.
+  const markdownText = useMemo(
+    () => (mathEnabled ? normalizeLatexMathDelimiters(text) : text),
+    [mathEnabled, text],
   );
 
   // react-markdown converts unparsed HTML nodes to text when skipHtml is false.
@@ -3475,16 +3538,12 @@ function ChatMarkdown({
       <ChatMarkdownRendererContext value={componentState}>
         <ReactMarkdown
           remarkPlugins={remarkPlugins}
-          rehypePlugins={
-            parseRawHtml
-              ? CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS
-              : CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS
-          }
+          rehypePlugins={resolveChatMarkdownRehypePlugins(parseRawHtml, mathEnabled)}
           skipHtml={false}
           components={CHAT_MARKDOWN_COMPONENTS}
           urlTransform={markdownUrlTransform}
         >
-          {text}
+          {markdownText}
         </ReactMarkdown>
       </ChatMarkdownRendererContext>
       {localMediaPreview ? (

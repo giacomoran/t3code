@@ -709,6 +709,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.fontFamilyComposer,
       settings.fontFamilySans,
       settings.fontFamilyTerminal,
+      settings.chatMathEnabled,
       settings.fontSizeChat,
       settings.fontSizeCode,
       settings.fontSizeInterface,
@@ -856,6 +857,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       fontSizePrompt: DEFAULT_UNIFIED_SETTINGS.fontSizePrompt,
       fontSizeCode: DEFAULT_UNIFIED_SETTINGS.fontSizeCode,
       fontSizeChat: DEFAULT_UNIFIED_SETTINGS.fontSizeChat,
+      chatMathEnabled: DEFAULT_UNIFIED_SETTINGS.chatMathEnabled,
       fontSizeTerminal: DEFAULT_UNIFIED_SETTINGS.fontSizeTerminal,
       browserDefaultViewport: DEFAULT_UNIFIED_SETTINGS.browserDefaultViewport,
       browserDefaultZoomFactor: DEFAULT_UNIFIED_SETTINGS.browserDefaultZoomFactor,
@@ -1711,6 +1713,35 @@ function ChatFontSizeRow() {
   );
 }
 
+function ChatMathRow() {
+  const settings = usePrimarySettings();
+  const updateSettings = useUpdatePrimarySettings();
+  return (
+    <SettingsRow
+      {...searchableSetting("chat-math")}
+      title="Math (LaTeX) in chat"
+      description="Render $inline$ and $$display$$ formulas with KaTeX. Turn off if dollar signs in prose get mistaken for math."
+      resetAction={
+        settings.chatMathEnabled !== DEFAULT_UNIFIED_SETTINGS.chatMathEnabled ? (
+          <SettingResetButton
+            label="math rendering"
+            onClick={() =>
+              updateSettings({ chatMathEnabled: DEFAULT_UNIFIED_SETTINGS.chatMathEnabled })
+            }
+          />
+        ) : null
+      }
+      control={
+        <Switch
+          checked={settings.chatMathEnabled}
+          onCheckedChange={(checked) => updateSettings({ chatMathEnabled: Boolean(checked) })}
+          aria-label="Render math (LaTeX) in chat"
+        />
+      }
+    />
+  );
+}
+
 function TerminalFontRow() {
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
@@ -1813,6 +1844,7 @@ function FontSettingsGroup() {
       <InterfaceFontRow />
       <PromptFontRow />
       <ChatFontSizeRow />
+      <ChatMathRow />
       <CodeFontRow />
       <TerminalFontRow />
       <FontSmoothingRow />
@@ -1831,6 +1863,7 @@ function SimpleFontRows() {
     <>
       <InterfaceFontRow preview={<PromptFontPreview />} />
       <ChatFontSizeRow />
+      <ChatMathRow />
       <CodeFontRow
         title="Monospace font"
         description="Code blocks, diffs, file previews, and the terminal."

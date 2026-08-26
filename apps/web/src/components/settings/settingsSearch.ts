@@ -307,6 +307,11 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/appearance",
   },
   {
+    id: "chat-math",
+    title: "Math (LaTeX) in chat",
+    to: "/settings/appearance",
+  },
+  {
     id: "code-font",
     title: "Code font",
     to: "/settings/appearance",
