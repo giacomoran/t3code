@@ -3090,6 +3090,7 @@ export default function ChatView(props: ChatViewProps) {
   const {
     getModelDisabledReason,
     handleRuntimeModeChangeStable,
+    onApplyModelProfileStable,
     onEnvModeChangeStable,
     onProviderModelSelectStable,
     onStartFromOriginChange,
@@ -4002,6 +4003,7 @@ export default function ChatView(props: ChatViewProps) {
                                 }
                                 onProviderModelSelect={onProviderModelSelectStable}
                                 onOpenProviderSetup={openProviderSetupStable}
+                                onApplyModelProfile={onApplyModelProfileStable}
                                 getModelDisabledReason={getModelDisabledReason}
                                 handleRuntimeModeChange={handleRuntimeModeChangeStable}
                                 focusComposer={focusComposerStable}

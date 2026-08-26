@@ -207,6 +207,7 @@ import { useLinkedEnvironments } from "~/state/peerLinks";
 import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
 import type {
   ComposerContextRecord,
+  ModelProfile,
   OrchestrationV2Run,
   ThreadPullRequestLink,
 } from "@t3tools/contracts";
@@ -516,6 +517,7 @@ export interface ChatComposerProps {
     options?: { focusComposer?: boolean },
   ) => void;
   onOpenProviderSetup: (instanceId: ProviderInstanceId) => void;
+  onApplyModelProfile: (profile: ModelProfile) => void;
   getModelDisabledReason: (instanceId: ProviderInstanceId, model: string) => string | null;
   handleRuntimeModeChange: (mode: RuntimeMode) => void;
 
@@ -608,6 +610,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onChangeActivePendingUserInputCustomAnswer,
     onProviderModelSelect,
     onOpenProviderSetup,
+    onApplyModelProfile,
     getModelDisabledReason,
     handleRuntimeModeChange,
     focusComposer,
@@ -2733,6 +2736,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         showProviderUnavailable={showProviderUnavailable}
         providerSetupInstanceId={providerSetupInstanceId}
         onOpenProviderSetup={onOpenProviderSetup}
+        modelProfiles={settings.modelProfiles}
+        onApplyModelProfile={onApplyModelProfile}
         providerCatalogPending={providerCatalogPending}
         isSendBusy={isSendBusy}
         multipleModelsEnabled={routeKind === "draft" && supportsMultipleModels}
