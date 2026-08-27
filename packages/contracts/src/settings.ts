@@ -189,6 +189,18 @@ export const ModelProfile = Schema.Struct({
 });
 export type ModelProfile = typeof ModelProfile.Type;
 
+/**
+ * Which delimiters the chat renders as math.
+ *
+ * `$…$` is what most assistants emit for inline math, but a single dollar is
+ * also how prose writes money: "$1K to date … $1K spent" reads as one formula
+ * and swallows the sentence between them. That failure is silent and ugly, so
+ * single-dollar math is opt-in and everything unambiguous is on by default.
+ */
+export const ChatMathMode = Schema.Literals(["off", "latex", "dollar"]);
+export type ChatMathMode = typeof ChatMathMode.Type;
+export const DEFAULT_CHAT_MATH_MODE: ChatMathMode = "latex";
+
 export const EnvironmentIdentificationMode = Schema.Literals(["artwork", "pill", "none"]);
 export type EnvironmentIdentificationMode = typeof EnvironmentIdentificationMode.Type;
 export const DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE: EnvironmentIdentificationMode = "artwork";
@@ -446,7 +458,7 @@ export const ClientSettingsSchema = Schema.Struct({
   fontSizeChat: ChatFontSize.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_CHAT_FONT_SIZE)),
   ),
-  chatMathEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  chatMath: ChatMathMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_CHAT_MATH_MODE))),
   // One-click model setups shown in the composer footer. Ordered as the user
   // arranged them; the id is what the UI keys and de-duplicates on.
   modelProfiles: Schema.Array(ModelProfile).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
@@ -1775,7 +1787,7 @@ export const ClientSettingsPatch = Schema.Struct({
   fontSizePrompt: Schema.optionalKey(PromptFontSize),
   fontSizeCode: Schema.optionalKey(CodeFontSize),
   fontSizeChat: Schema.optionalKey(ChatFontSize),
-  chatMathEnabled: Schema.optionalKey(Schema.Boolean),
+  chatMath: Schema.optionalKey(ChatMathMode),
   modelProfiles: Schema.optionalKey(Schema.Array(ModelProfile)),
   fontSizeTerminal: Schema.optionalKey(TerminalFontSize),
   fontFamilyCode: Schema.optionalKey(FontFamilyPreference),

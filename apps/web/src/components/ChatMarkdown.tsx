@@ -49,6 +49,7 @@ import { Check, Copy, Maximize2, Minimize2 } from "lucide";
 import {
   AuthPreviewOperateScope,
   type AssetResource,
+  type ChatMathMode,
   type EnvironmentId,
   type ScopedThreadRef,
   type ServerProviderSkill,
@@ -410,28 +411,25 @@ function orderedListGutterStyle(
   return { "--list-gutter": `${markerWidth + 2}ch` };
 }
 
-const CHAT_MARKDOWN_MATH_OPTIONS = { singleDollarTextMath: true } as const;
-
-const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_MATH = [
-  ...CHAT_MARKDOWN_REMARK_PLUGINS,
-  [remarkMath, CHAT_MARKDOWN_MATH_OPTIONS],
-  remarkPromoteStandaloneMath,
-] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
-
-const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS_AND_MATH = [
-  ...CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
-  [remarkMath, CHAT_MARKDOWN_MATH_OPTIONS],
-  remarkPromoteStandaloneMath,
-] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
+/**
+ * `singleDollarTextMath` is the whole difference between the two math modes:
+ * with it on, the `$` that writes money opens a formula.
+ */
+function chatMarkdownMathOptions(mode: ChatMathMode): { readonly singleDollarTextMath: boolean } {
+  return { singleDollarTextMath: mode === "dollar" };
+}
 
 function resolveChatMarkdownRemarkPlugins(
   lineBreaks: boolean,
-  mathEnabled: boolean,
+  mode: ChatMathMode,
 ): NonNullable<ReactMarkdownOptions["remarkPlugins"]> {
-  if (lineBreaks && mathEnabled) return CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS_AND_MATH;
-  if (lineBreaks && !mathEnabled) return CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS;
-  if (!lineBreaks && mathEnabled) return CHAT_MARKDOWN_REMARK_PLUGINS_WITH_MATH;
-  return CHAT_MARKDOWN_REMARK_PLUGINS;
+  const base = lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS;
+  if (mode === "off") return base;
+  return [
+    ...base,
+    [remarkMath, chatMarkdownMathOptions(mode)],
+    remarkPromoteStandaloneMath,
+  ] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
 }
 
 const GITHUB_ALERT_PRESENTATIONS: Record<
@@ -1932,24 +1930,14 @@ const CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS = [rehypeHeadingIds] satisfies N
 // KaTeX itself generates from already-sanitized math text gets through.
 // It also runs after heading ids, so a heading's slug comes from the formula
 // source rather than KaTeX's rendered markup.
-const CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS_WITH_MATH = [
-  ...CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS,
-  rehypeKatex,
-] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
-
-// Raw HTML disabled: nothing to sanitize, so KaTeX follows heading ids directly.
-const CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS_WITH_MATH = [
-  ...CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS,
-  rehypeKatex,
-] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
-
 function resolveChatMarkdownRehypePlugins(
   parseRawHtml: boolean,
-  mathEnabled: boolean,
+  mode: ChatMathMode,
 ): NonNullable<ReactMarkdownOptions["rehypePlugins"]> {
-  if (parseRawHtml && mathEnabled) return CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS_WITH_MATH;
-  if (parseRawHtml && !mathEnabled) return CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS;
-  if (!parseRawHtml && mathEnabled) return CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS_WITH_MATH;
+  if (parseRawHtml && mode !== "off") return [...CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS, rehypeKatex];
+  if (parseRawHtml) return CHAT_MARKDOWN_RENDER_REHYPE_PLUGINS;
+  // Raw HTML disabled: nothing to sanitize, so KaTeX follows heading ids directly.
+  if (mode !== "off") return [...CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS, rehypeKatex];
   return CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS;
 }
 
@@ -2404,7 +2392,7 @@ function useChatMarkdownState({
       mediaRequestId.current += 1;
     };
   }, [threadRef?.environmentId, threadRef?.threadId, explicitEnvironmentId, cwd, imageBaseDir]);
-  const mathEnabled = useClientSettings((settings) => settings.chatMathEnabled);
+  const mathMode = useClientSettings((settings) => settings.chatMath);
   const createAssetUrl = useAtomQueryRunner(assetEnvironment.createUrl, {
     reportFailure: false,
     refresh: true,
@@ -3507,18 +3495,18 @@ function ChatMarkdown({
     /(?:^|\n) {0,3}(?:`{3}|~{3})/.test(text);
   const remarkPlugins = useMemo(
     () => [
-      ...resolveChatMarkdownRemarkPlugins(lineBreaks, mathEnabled),
+      ...resolveChatMarkdownRemarkPlugins(lineBreaks, mathMode),
       ...extraRemarkPlugins,
       ...(incrementalParsing ? [createIncrementalMarkdownPlugin()] : []),
     ],
-    [extraRemarkPlugins, incrementalParsing, lineBreaks, mathEnabled],
+    [extraRemarkPlugins, incrementalParsing, lineBreaks, mathMode],
   );
 
   // LaTeX's own delimiters are rewritten to the dollar forms remark-math
   // parses. Skipped entirely when math is off so the source renders literally.
   const markdownText = useMemo(
-    () => (mathEnabled ? normalizeLatexMathDelimiters(text) : text),
-    [mathEnabled, text],
+    () => (mathMode === "off" ? text : normalizeLatexMathDelimiters(text)),
+    [mathMode, text],
   );
 
   // react-markdown converts unparsed HTML nodes to text when skipHtml is false.
@@ -3538,7 +3526,7 @@ function ChatMarkdown({
       <ChatMarkdownRendererContext value={componentState}>
         <ReactMarkdown
           remarkPlugins={remarkPlugins}
-          rehypePlugins={resolveChatMarkdownRehypePlugins(parseRawHtml, mathEnabled)}
+          rehypePlugins={resolveChatMarkdownRehypePlugins(parseRawHtml, mathMode)}
           skipHtml={false}
           components={CHAT_MARKDOWN_COMPONENTS}
           urlTransform={markdownUrlTransform}

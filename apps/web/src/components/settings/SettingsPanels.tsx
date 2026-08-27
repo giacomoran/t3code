@@ -29,6 +29,7 @@ import {
   type DiffLayout,
   type EnvironmentIdentificationMode,
   MAX_APPEARANCE_CONTRAST,
+  type ChatMathMode,
   MAX_CHAT_FONT_SIZE,
   MAX_CODE_FONT_SIZE,
   MAX_GLASS_OPACITY,
@@ -709,7 +710,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.fontFamilyComposer,
       settings.fontFamilySans,
       settings.fontFamilyTerminal,
-      settings.chatMathEnabled,
+      settings.chatMath,
       settings.fontSizeChat,
       settings.fontSizeCode,
       settings.fontSizeInterface,
@@ -857,7 +858,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       fontSizePrompt: DEFAULT_UNIFIED_SETTINGS.fontSizePrompt,
       fontSizeCode: DEFAULT_UNIFIED_SETTINGS.fontSizeCode,
       fontSizeChat: DEFAULT_UNIFIED_SETTINGS.fontSizeChat,
-      chatMathEnabled: DEFAULT_UNIFIED_SETTINGS.chatMathEnabled,
+      chatMath: DEFAULT_UNIFIED_SETTINGS.chatMath,
       fontSizeTerminal: DEFAULT_UNIFIED_SETTINGS.fontSizeTerminal,
       browserDefaultViewport: DEFAULT_UNIFIED_SETTINGS.browserDefaultViewport,
       browserDefaultZoomFactor: DEFAULT_UNIFIED_SETTINGS.browserDefaultZoomFactor,
@@ -1713,6 +1714,12 @@ function ChatFontSizeRow() {
   );
 }
 
+const CHAT_MATH_LABELS: Record<ChatMathMode, string> = {
+  off: "Off",
+  latex: "LaTeX delimiters",
+  dollar: "Also $…$",
+};
+
 function ChatMathRow() {
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
@@ -1720,23 +1727,44 @@ function ChatMathRow() {
     <SettingsRow
       {...searchableSetting("chat-math")}
       title="Math (LaTeX) in chat"
-      description="Render $inline$ and $$display$$ formulas with KaTeX. Turn off if dollar signs in prose get mistaken for math."
+      description={
+        settings.chatMath === "dollar"
+          ? "Renders \\(x\\), \\[x\\], $$x$$ and $x$ with KaTeX. Single dollars also catch prices — \u201C$1K … $1K\u201D renders as one formula."
+          : "Renders \\(x\\), \\[x\\] and $$x$$ with KaTeX. Single dollars stay text, so prices in prose are safe."
+      }
       resetAction={
-        settings.chatMathEnabled !== DEFAULT_UNIFIED_SETTINGS.chatMathEnabled ? (
+        settings.chatMath !== DEFAULT_UNIFIED_SETTINGS.chatMath ? (
           <SettingResetButton
             label="math rendering"
-            onClick={() =>
-              updateSettings({ chatMathEnabled: DEFAULT_UNIFIED_SETTINGS.chatMathEnabled })
-            }
+            onClick={() => updateSettings({ chatMath: DEFAULT_UNIFIED_SETTINGS.chatMath })}
           />
         ) : null
       }
       control={
-        <Switch
-          checked={settings.chatMathEnabled}
-          onCheckedChange={(checked) => updateSettings({ chatMathEnabled: Boolean(checked) })}
-          aria-label="Render math (LaTeX) in chat"
-        />
+        <Select
+          value={settings.chatMath}
+          onValueChange={(next) => {
+            if (typeof next !== "string") return;
+            if (next === "off" || next === "latex" || next === "dollar") {
+              updateSettings({ chatMath: next });
+            }
+          }}
+        >
+          <SelectTrigger className="w-44 shrink-0" aria-label="Math (LaTeX) in chat">
+            <SelectValue>{CHAT_MATH_LABELS[settings.chatMath]}</SelectValue>
+          </SelectTrigger>
+          <SelectPopup align="end" alignItemWithTrigger={false}>
+            <SelectItem hideIndicator value="off">
+              {CHAT_MATH_LABELS.off}
+            </SelectItem>
+            <SelectItem hideIndicator value="latex">
+              {CHAT_MATH_LABELS.latex}
+            </SelectItem>
+            <SelectItem hideIndicator value="dollar">
+              {CHAT_MATH_LABELS.dollar}
+            </SelectItem>
+          </SelectPopup>
+        </Select>
       }
     />
   );

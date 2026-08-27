@@ -10,18 +10,20 @@
  * stylistic one. Task-list toggling hands back a `markerOffset` into this same
  * source string and splices the file at that index (see `setMarkdownTaskChecked`),
  * so shifting any character would silently break checkboxes that follow a
- * formula. `\[`/`\]` map to `$$` exactly; `\(`/`\)` map to a padded `` $``/``$ ``
- * so the two characters stay two characters. The padding sits on the outside of
- * the delimiter, where it cannot break the "no space just inside the dollars"
- * rule that inline math relies on.
+ * formula. Both pairs map to `$$`, which is two characters for two.
+ *
+ * `$$` rather than a single `$` because single-dollar math is off by default —
+ * it cannot tell a formula from a price. Double dollars inside a paragraph
+ * still parse as inline math; a paragraph that is nothing but one formula is
+ * promoted to display separately, which is what makes `\[…\]` on its own line
+ * come out centred.
  *
  * Code is left alone: fenced blocks and inline spans are copied through
  * verbatim, so `\(` in a shell snippet stays a shell snippet.
  */
 
-const OPEN_INLINE = " $";
-const CLOSE_INLINE = "$ ";
-const DISPLAY = "$$";
+/** Both delimiter pairs become `$$`; display vs inline is decided after parsing. */
+const MATH_DELIMITER = "$$";
 
 /** A fence opener at the start of a line: up to three spaces, then ``` or ~~~. */
 function matchFenceOpen(
@@ -128,19 +130,19 @@ export function normalizeLatexMathDelimiters(source: string): string {
         continue;
       }
       if (next === "(") {
-        out += OPEN_INLINE;
+        out += MATH_DELIMITER;
         index += 2;
         atLineStart = false;
         continue;
       }
       if (next === ")") {
-        out += CLOSE_INLINE;
+        out += MATH_DELIMITER;
         index += 2;
         atLineStart = false;
         continue;
       }
       if (next === "[" || next === "]") {
-        out += DISPLAY;
+        out += MATH_DELIMITER;
         index += 2;
         atLineStart = false;
         continue;

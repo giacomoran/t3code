@@ -64,7 +64,7 @@ const CHAT_PREVIEW_TEXT = [
   "- Cache hit rate rose from 62% to 94%",
   "- The p95 for `resolveModel` dropped below 5ms",
   "",
-  "The bound follows from $O(n \\log n)$ comparisons:",
+  "The bound follows from \\(O(n \\log n)\\) comparisons:",
   "",
   "$$\\sum_{i=1}^{n} \\frac{1}{i} \\approx \\ln n + \\gamma$$",
 ].join("\n");

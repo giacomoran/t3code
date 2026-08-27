@@ -10,9 +10,9 @@ function expectSameLength(source: string): string {
 }
 
 describe("normalizeLatexMathDelimiters", () => {
-  it("rewrites inline \\( \\) to single dollars", () => {
+  it("rewrites inline \\( \\) to double dollars", () => {
     expect(expectSameLength("The cost is \\(O(n)\\) overall.")).toBe(
-      "The cost is  $O(n)$  overall.",
+      "The cost is $$O(n)$$ overall.",
     );
   });
 
@@ -35,8 +35,8 @@ describe("normalizeLatexMathDelimiters", () => {
     const result = expectSameLength(source);
 
     expect(result).toContain("echo \\(not math\\)");
-    expect(result).toContain("Before  $a$ ");
-    expect(result).toContain("After  $b$ ");
+    expect(result).toContain("Before $$a$$");
+    expect(result).toContain("After $$b$$");
   });
 
   it("leaves tilde-fenced code blocks alone", () => {
@@ -50,7 +50,7 @@ describe("normalizeLatexMathDelimiters", () => {
     const result = expectSameLength(source);
 
     expect(result).toContain("`printf \\(x\\)`");
-    expect(result).toContain("then  $y$ .");
+    expect(result).toContain("then $$y$$.");
   });
 
   it("does not treat an escaped backslash as a delimiter", () => {
@@ -68,6 +68,6 @@ describe("normalizeLatexMathDelimiters", () => {
   it("handles several formulas in one paragraph", () => {
     const result = expectSameLength("\\(a\\) then \\(b\\) then \\[c\\]");
 
-    expect(result).toBe(" $a$  then  $b$  then $$c$$");
+    expect(result).toBe("$$a$$ then $$b$$ then $$c$$");
   });
 });

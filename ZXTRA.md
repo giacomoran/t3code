@@ -20,35 +20,44 @@ message keep following the existing _Code font size_, so they do not move with i
 
 ### 2. Math (LaTeX) in chat
 
-`Settings → Appearance → Math (LaTeX) in chat` (on by default).
+`Settings → Appearance → Math (LaTeX) in chat`, with three settings:
 
-Renders formulas with KaTeX in all four delimiter styles:
+| Setting              | Renders                                 |
+| -------------------- | --------------------------------------- |
+| Off                  | nothing; formulas stay as source        |
+| **LaTeX delimiters** | `\(x\)`, `\[x\]`, `$$x$$` — the default |
+| Also `$…$`           | the above, plus single dollars          |
 
-| Written | Renders as |
-| ------- | ---------- |
-| `$x$`   | inline     |
-| `\(x\)` | inline     |
-| `$$x$$` | display    |
-| `\[x\]` | display    |
+**Single-dollar math is opt-in, and that is the point.** A single `$` is both how
+assistants write inline math and how prose writes money, and nothing in the syntax
+distinguishes them. "roughly `$`1K to date … `$`1K spent" is a valid formula spanning
+the sentence between the two amounts, and KaTeX renders it as one — the paragraph turns
+into italic math and the text between the prices disappears into it. There is no
+heuristic that reliably separates the two cases, so the ambiguous delimiter is the one
+you turn on deliberately; the unambiguous ones are always available.
+
+`\(x\)` is the delimiter to prefer for inline math. Assistants emit `$x$` more often,
+so turn on "Also `$…$`" if you read more formulas than prices and are willing to accept
+the failure above.
 
 Single-line `$$…$$` is promoted to a centered display equation — micromark only treats
 `$$` as display math when the delimiters sit on their own lines, but assistants emit the
-single-line form constantly.
+single-line form constantly. That promotion is also what makes `\[x\]` on its own line
+come out centred while `\(x\)` mid-sentence stays inline: both rewrite to `$$`, and
+whether a formula is display is decided afterwards from whether it is a paragraph's
+entire content.
 
-LaTeX's own `\(…\)` / `\[…\]` are rewritten to the dollar forms before parsing, because
-CommonMark treats `\(` as an escape for a literal `(` — by the time the markdown is a
-syntax tree the backslashes are gone and no plugin could see them. That rewrite is
-length-preserving on purpose: task-list toggling splices files by byte offset into this
-same string, so moving a single character would break checkboxes that follow a formula.
-Code fences and inline spans are copied through untouched.
+LaTeX's own `\(…\)` / `\[…\]` are rewritten to `$$` before parsing, because CommonMark
+treats `\(` as an escape for a literal `(` — by the time the markdown is a syntax tree
+the backslashes are gone and no plugin could see them. That rewrite is length-preserving
+on purpose: task-list toggling splices files by byte offset into this same string, so
+moving a single character would break checkboxes that follow a formula. Code fences and
+inline spans are copied through untouched.
 
 KaTeX runs _after_ HTML sanitization on purpose: it emits the MathML and presentational
 spans that make up a formula, none of which survive the sanitize schema. Author HTML is
 still sanitized first, so only markup KaTeX generates from already-sanitized math text
 gets through.
-
-Turn the setting off if `$` runs in prose (shell variables, prices) start getting
-mistaken for math.
 
 ### 3. Model profiles
 
