@@ -61,16 +61,22 @@ gets through.
 
 ### 3. Model profiles
 
-A row of chips in the composer footer, next to the model picker.
+A single dropdown in the composer footer, next to the model picker.
 
-Each chip is a named snapshot of a **provider instance + model + every trait** (reasoning
-effort, fast mode, context window, …). One click restores the whole combination instead
+A profile is a named snapshot of a **provider instance + model + every trait** (reasoning
+effort, fast mode, context window, …). Picking one restores the whole combination instead
 of walking three menus — e.g. "GPT Luna · low · fast".
 
-- **Save** the current setup with the `+` button (the name field pre-fills from the model
-  and its traits).
-- **Apply** with a single click on the chip. The active chip is highlighted.
-- **Delete** from the same popover.
+The control is a dropdown rather than a row of chips because names derive from the model
+and its traits, so three of them spelled out side by side crowded the footer and pushed
+the traits and mode controls into an invisible horizontal scroll.
+
+- **Trigger** shows the profile the composer currently sits on, or "Profiles" when the
+  setup matches none of them.
+- **Apply** by picking a row; the active row is checked.
+- **Save** the current setup from the field at the bottom of the same popup (it pre-fills
+  from the model and its traits).
+- **Delete** with the trash button on the row.
 
 Applying a profile replaces traits outright rather than merging them, so a profile with
 no traits resets to provider defaults instead of inheriting whatever was set before.
@@ -160,7 +166,7 @@ Only these upstream files are modified, each in one or two spots:
 | `apps/web/src/components/settings/SettingsPanels.tsx`       | Appearance rows                        |
 | `apps/web/src/components/settings/SettingsFontPreviews.tsx` | chat font preview                      |
 | `apps/web/src/components/settings/settingsSearch.ts`        | makes the rows searchable              |
-| `apps/web/src/components/chat/ChatComposer.tsx`             | renders the profiles bar               |
+| `apps/web/src/components/chat/ChatComposer.tsx`             | renders the profiles dropdown          |
 | `apps/web/src/components/ChatView.tsx`                      | applies a profile                      |
 | `apps/web/src/main.tsx`                                     | KaTeX stylesheet                       |
 | `apps/web/package.json`                                     | `katex`, `remark-math`, `rehype-katex` |
