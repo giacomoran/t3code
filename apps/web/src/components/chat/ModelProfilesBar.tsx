@@ -1,13 +1,12 @@
 import { type ModelProfile, MAX_MODEL_PROFILES } from "@t3tools/contracts";
-import { BookmarkPlusIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { BookmarkPlusIcon, CheckIcon, Trash2Icon } from "lucide-react";
 import { memo, useMemo, useState } from "react";
 
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { ComposerControl } from "./ComposerControl";
+import { ComposerControl, ComposerControlChevron } from "./ComposerControl";
 import {
   isModelProfileActive,
   isModelProfileListFull,
@@ -28,12 +27,22 @@ function traitLabelsForSelection(selection: ModelProfileSelection): ReadonlyArra
 }
 
 /**
- * One-click model setups in the composer footer.
+ * What a profile row says to the right of its name. Suggested names already
+ * lead with the model, so repeating it there would just stutter; a name the
+ * user typed says nothing about the setup and needs the summary.
+ */
+function modelProfileSummary(profile: ModelProfile): string | null {
+  if (profile.name.startsWith(profile.model)) return null;
+  return [profile.model, ...traitLabelsForSelection(profile)].join(" · ");
+}
+
+/**
+ * One-click model setups, as a single composer control.
  *
- * Each chip restores a provider instance, model and every trait at once, so a
- * combination like "Luna + low reasoning + fast" is a single press instead of
- * three menus. The trailing button manages the list: it saves whatever the
- * composer is set to right now, and deletes profiles that are no longer used.
+ * The trigger names the profile the composer currently sits on, and the popup
+ * both applies profiles and manages the list. Applying restores a provider
+ * instance, model and every trait at once, so a combination like "Luna + low
+ * reasoning + fast" is one press instead of three menus.
  */
 export const ModelProfilesBar = memo(function ModelProfilesBar({
   profiles,
@@ -50,15 +59,15 @@ export const ModelProfilesBar = memo(function ModelProfilesBar({
   onSave: (name: string) => void;
   onDelete: (id: string) => void;
 }) {
-  const [isManagerOpen, setIsManagerOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
   const [draftName, setDraftName] = useState("");
 
   const suggestion = useMemo(
     () => suggestedModelProfileName(selection, traitLabelsForSelection(selection)),
     [selection],
   );
-  const activeProfileId = useMemo(
-    () => profiles.find((profile) => isModelProfileActive(profile, selection))?.id ?? null,
+  const activeProfile = useMemo(
+    () => profiles.find((profile) => isModelProfileActive(profile, selection)) ?? null,
     [profiles, selection],
   );
   const isFull = isModelProfileListFull(profiles);
@@ -71,125 +80,125 @@ export const ModelProfilesBar = memo(function ModelProfilesBar({
     if (!canSave) return;
     onSave(nameToSave);
     setDraftName("");
-    setIsManagerOpen(false);
+    setIsOpen(false);
+  };
+
+  const apply = (profile: ModelProfile) => {
+    onApply(profile);
+    setIsOpen(false);
   };
 
   return (
-    <>
-      {profiles.map((profile) => {
-        const isActive = profile.id === activeProfileId;
-        return (
-          <Tooltip key={profile.id}>
-            <TooltipTrigger
-              render={
-                <ComposerControl
-                  type="button"
-                  disabled={disabled}
-                  aria-pressed={isActive}
-                  data-model-profile-active={isActive ? "true" : undefined}
-                  className={cn("shrink-0", isActive && "bg-muted text-foreground hover:bg-muted")}
-                  onClick={() => onApply(profile)}
-                >
-                  <span className="max-w-40 truncate">{profile.name}</span>
-                </ComposerControl>
-              }
-            />
-            <TooltipPopup>
-              {profile.model}
-              {profile.options && profile.options.length > 0
-                ? ` · ${traitLabelsForSelection(profile).join(" · ")}`
-                : ""}
-            </TooltipPopup>
-          </Tooltip>
-        );
-      })}
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger
+        render={
+          <ComposerControl
+            type="button"
+            disabled={disabled}
+            data-model-profile-active={activeProfile ? "true" : undefined}
+            className="shrink-0"
+          >
+            {profiles.length === 0 ? (
+              <>
+                <BookmarkPlusIcon aria-hidden="true" className="size-4" />
+                <span>Save profile</span>
+              </>
+            ) : (
+              <>
+                <span className={cn("max-w-40 truncate", activeProfile && "text-foreground")}>
+                  {activeProfile?.name ?? "Profiles"}
+                </span>
+                <ComposerControlChevron />
+              </>
+            )}
+          </ComposerControl>
+        }
+      />
+      <PopoverPopup align="start" className="w-72 p-1.5">
+        <div className="space-y-1.5">
+          {profiles.length > 0 ? (
+            <ul className="space-y-0.5">
+              {profiles.map((profile) => {
+                const isActive = profile.id === activeProfile?.id;
+                const summary = modelProfileSummary(profile);
+                return (
+                  <li key={profile.id} className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      aria-pressed={isActive}
+                      data-model-profile-active={isActive ? "true" : undefined}
+                      className={cn(
+                        "flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1.5 text-start text-sm hover:bg-accent",
+                        isActive ? "text-foreground" : "text-secondary-label",
+                      )}
+                      onClick={() => apply(profile)}
+                    >
+                      <CheckIcon
+                        aria-hidden="true"
+                        className={cn("size-3.5 shrink-0", isActive ? "opacity-100" : "opacity-0")}
+                      />
+                      <span className="min-w-0 flex-1 truncate">{profile.name}</span>
+                      {summary === null ? null : (
+                        <span className="min-w-0 shrink truncate text-[11px] text-muted-foreground">
+                          {summary}
+                        </span>
+                      )}
+                    </button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="size-6 shrink-0"
+                      aria-label={`Delete ${profile.name}`}
+                      onClick={() => onDelete(profile.id)}
+                    >
+                      <Trash2Icon aria-hidden="true" className="size-3.5" />
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
 
-      <Popover open={isManagerOpen} onOpenChange={setIsManagerOpen}>
-        <PopoverTrigger
-          render={
-            <ComposerControl
-              type="button"
-              disabled={disabled}
-              className="shrink-0 px-1.5"
-              aria-label="Model profiles"
-            >
-              {profiles.length === 0 ? (
-                <>
-                  <BookmarkPlusIcon aria-hidden="true" className="size-4" />
-                  <span>Save profile</span>
-                </>
-              ) : (
-                <PlusIcon aria-hidden="true" className="size-4" />
-              )}
-            </ComposerControl>
-          }
-        />
-        <PopoverPopup align="start" className="w-72 p-2">
-          <div className="space-y-2">
-            <div className="space-y-1">
-              <p className="font-medium text-xs text-secondary-label">Save current setup</p>
-              <div className="flex items-center gap-1.5">
-                <Input
-                  autoFocus
-                  className="h-7 min-w-0 flex-1 text-xs"
-                  maxLength={40}
-                  placeholder={suggestion}
-                  spellCheck={false}
-                  value={draftName}
-                  onChange={(event) => setDraftName(event.currentTarget.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      save();
-                    }
-                  }}
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  className="h-7 shrink-0"
-                  disabled={!canSave}
-                  onClick={save}
-                >
-                  Save
-                </Button>
-              </div>
-              {isFull ? (
-                <p className="text-[11px] text-muted-foreground">
-                  {MAX_MODEL_PROFILES} profiles is the limit — delete one to add another.
-                </p>
-              ) : null}
+          <div
+            className={cn("space-y-1", profiles.length > 0 && "border-border/70 border-t pt-1.5")}
+          >
+            <p className="px-1.5 font-medium text-secondary-label text-xs">Save current setup</p>
+            <div className="flex items-center gap-1.5">
+              <Input
+                autoFocus
+                className="h-7 min-w-0 flex-1 text-xs"
+                maxLength={40}
+                placeholder={suggestion}
+                spellCheck={false}
+                value={draftName}
+                onChange={(event) => setDraftName(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    save();
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="h-7 shrink-0"
+                disabled={!canSave}
+                onClick={save}
+              >
+                Save
+              </Button>
             </div>
-
-            {profiles.length > 0 ? (
-              <div className="space-y-1 border-border/70 border-t pt-2">
-                <p className="font-medium text-xs text-secondary-label">Profiles</p>
-                <ul className="space-y-0.5">
-                  {profiles.map((profile) => (
-                    <li key={profile.id} className="flex items-center gap-1.5">
-                      <span className="min-w-0 flex-1 truncate text-xs">{profile.name}</span>
-                      <span className="shrink-0 truncate text-[11px] text-muted-foreground">
-                        {profile.model}
-                      </span>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="size-6 shrink-0"
-                        aria-label={`Delete ${profile.name}`}
-                        onClick={() => onDelete(profile.id)}
-                      >
-                        <Trash2Icon aria-hidden="true" className="size-3.5" />
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            {isFull ? (
+              <p className="px-1.5 text-[11px] text-muted-foreground">
+                {MAX_MODEL_PROFILES} profiles is the limit — delete one to add another.
+              </p>
             ) : null}
           </div>
-        </PopoverPopup>
-      </Popover>
-    </>
+        </div>
+      </PopoverPopup>
+    </Popover>
   );
 });
