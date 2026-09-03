@@ -412,22 +412,19 @@ function orderedListGutterStyle(
 }
 
 /**
+ * What math adds to the remark chain, so the caller keeps composing the chain
+ * itself. Empty when math is off, which leaves the pipeline exactly as it is
+ * without this feature.
+ *
  * `singleDollarTextMath` is the whole difference between the two math modes:
  * with it on, the `$` that writes money opens a formula.
  */
-function chatMarkdownMathOptions(mode: ChatMathMode): { readonly singleDollarTextMath: boolean } {
-  return { singleDollarTextMath: mode === "dollar" };
-}
-
-function resolveChatMarkdownRemarkPlugins(
-  lineBreaks: boolean,
+function chatMarkdownMathRemarkPlugins(
   mode: ChatMathMode,
 ): NonNullable<ReactMarkdownOptions["remarkPlugins"]> {
-  const base = lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS;
-  if (mode === "off") return base;
+  if (mode === "off") return EMPTY_REMARK_PLUGINS;
   return [
-    ...base,
-    [remarkMath, chatMarkdownMathOptions(mode)],
+    [remarkMath, { singleDollarTextMath: mode === "dollar" }],
     remarkPromoteStandaloneMath,
   ] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
 }
@@ -2392,7 +2389,6 @@ function useChatMarkdownState({
       mediaRequestId.current += 1;
     };
   }, [threadRef?.environmentId, threadRef?.threadId, explicitEnvironmentId, cwd, imageBaseDir]);
-  const mathMode = useClientSettings((settings) => settings.chatMath);
   const createAssetUrl = useAtomQueryRunner(assetEnvironment.createUrl, {
     reportFailure: false,
     refresh: true,
@@ -3489,17 +3485,32 @@ function ChatMarkdown({
     localMediaPreview,
     setLocalMediaPreview,
   } = useChatMarkdownState({ text, ...props });
+  const mathMode = useClientSettings((settings) => settings.chatMath);
   const incrementalParsing =
     props.isStreaming === true &&
     extraRemarkPlugins.length === 0 &&
     /(?:^|\n) {0,3}(?:`{3}|~{3})/.test(text);
+
+  // Math sits between the base chain and the caller's plugins: it turns formulas
+  // into math nodes first, so a plugin that rewrites text — PR autolinking is
+  // the only caller — cannot reach inside one. The incremental parser stays
+  // last, as upstream has it: it only wraps the parser, and the prefix it
+  // caches already holds the math nodes.
   const remarkPlugins = useMemo(
     () => [
-      ...resolveChatMarkdownRemarkPlugins(lineBreaks, mathMode),
+      ...(lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS),
+      ...chatMarkdownMathRemarkPlugins(mathMode),
       ...extraRemarkPlugins,
       ...(incrementalParsing ? [createIncrementalMarkdownPlugin()] : []),
     ],
     [extraRemarkPlugins, incrementalParsing, lineBreaks, mathMode],
+  );
+
+  // Memoized for the same reason the remark chain is: a fresh array every
+  // render would re-run the whole pipeline.
+  const rehypePlugins = useMemo(
+    () => resolveChatMarkdownRehypePlugins(parseRawHtml, mathMode),
+    [parseRawHtml, mathMode],
   );
 
   // LaTeX's own delimiters are rewritten to the dollar forms remark-math
@@ -3526,7 +3537,7 @@ function ChatMarkdown({
       <ChatMarkdownRendererContext value={componentState}>
         <ReactMarkdown
           remarkPlugins={remarkPlugins}
-          rehypePlugins={resolveChatMarkdownRehypePlugins(parseRawHtml, mathMode)}
+          rehypePlugins={rehypePlugins}
           skipHtml={false}
           components={CHAT_MARKDOWN_COMPONENTS}
           urlTransform={markdownUrlTransform}
