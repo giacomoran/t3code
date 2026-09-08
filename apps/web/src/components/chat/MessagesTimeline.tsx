@@ -189,7 +189,6 @@ import { MessageCopyButton } from "./MessageCopyButton";
 import { promptLinkFor } from "../promptLinks/copyPromptLink";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { WorkspaceEntryIcon, WorkspaceEntryTooltip } from "./WorkspaceEntryIcon";
-import { AssistantSelectionToolbar } from "./AssistantSelectionToolbar";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import {
   AssistantCitationSource,
@@ -452,6 +451,10 @@ export interface MessagesTimelineHistoryControls {
 interface MessagesTimelineProps {
   citationRequest?: AssistantCitationRequest | null;
   citationHistoryLoading?: boolean;
+  /**
+   * Unused: this fork does not show the cite-selection button. Kept so callers
+   * upstream keep compiling without a change here.
+   */
   onCiteAssistantText?: (
     citation: AssistantCitation,
     sourceAnchor: AssistantCitationSourceAnchor,
@@ -571,7 +574,6 @@ export function MessagesTimeline(props: MessagesTimelineProps) {
 const ConversationTimeline = memo(function ConversationTimeline({
   citationRequest = null,
   citationHistoryLoading = false,
-  onCiteAssistantText,
   isWorking,
   runlessWorkActive = false,
   activeTurnInProgress,
@@ -1632,13 +1634,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
             className="relative h-full min-h-0"
             data-assistant-citation-viewport="true"
           >
-            {onCiteAssistantText && citationThreadRef ? (
-              <AssistantSelectionToolbar
-                viewport={timelineViewportElement}
-                threadRef={citationThreadRef}
-                onCite={onCiteAssistantText}
-              />
-            ) : null}
             <LegendList<MessagesTimelineRow>
               ref={setTimelineList}
               data={rows}
