@@ -74,6 +74,22 @@ no traits resets to provider defaults instead of inheriting whatever was set bef
 
 Profiles are client-local (stored in client settings, not on the server), capped at 24.
 
+### 4. No cite button on selected text
+
+Removed. Selecting text in an assistant message popped up a floating **Cite** button
+that attached the selection to the composer as a quoted citation — an affordance that
+appears on every selection, including the ones made to copy a line or just to read.
+
+Only the button is gone. The rest of upstream's citation machinery — the composer
+chip, the citation node, the anchors that mark assistant text as citable — is left
+untouched and simply has nothing left to trigger it. Removing that too would mean
+editing the composer, the prompt editor, and the timeline plumbing, which is a large
+fork surface for no visible gain; deleting the one mount point is a single hunk that
+survives rebases.
+
+`MessagesTimeline` still declares `onCiteAssistantText` so its callers upstream keep
+compiling unchanged. It is never read.
+
 ## Updating from upstream
 
 This fork is not auto-updated — that is the trade for it not silently reverting to an
@@ -161,6 +177,7 @@ Only these upstream files are modified, each in one or two spots:
 | `apps/web/src/components/ChatView.tsx`                      | applies a profile                      |
 | `apps/web/src/main.tsx`                                     | KaTeX stylesheet                       |
 | `apps/web/package.json`                                     | `katex`, `remark-math`, `rehype-katex` |
+| `apps/web/src/components/chat/MessagesTimeline.tsx`         | drops the cite-selection button        |
 
 If a rebase conflicts, it will almost always be one of the small hunks in the table
 above.
