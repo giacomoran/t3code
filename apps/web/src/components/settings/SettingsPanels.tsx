@@ -1663,8 +1663,8 @@ function CodeFontRow({
 }
 
 function ChatFontSizeRow() {
-  const settings = usePrimarySettings();
-  const updateSettings = useUpdatePrimarySettings();
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
   return (
     <SettingsRow
       {...searchableSetting("chat-font-size")}
@@ -1721,8 +1721,8 @@ const CHAT_MATH_LABELS: Record<ChatMathMode, string> = {
 };
 
 function ChatMathRow() {
-  const settings = usePrimarySettings();
-  const updateSettings = useUpdatePrimarySettings();
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
   return (
     <SettingsRow
       {...searchableSetting("chat-math")}
