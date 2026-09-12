@@ -59,6 +59,11 @@ spans that make up a formula, none of which survive the sanitize schema. Author 
 still sanitized first, so only markup KaTeX generates from already-sanitized math text
 gets through.
 
+The web build generates open-source license notices and refuses any dependency without
+a notice file in its tarball. `remark-math` and `rehype-katex` ship none — the
+remark-math monorepo keeps a single `license` at its root — so
+`third-party-licenses.config.json` carries a generated MIT notice for each.
+
 ### 3. Model profiles
 
 A single dropdown in the composer footer, next to the model picker.
@@ -186,6 +191,7 @@ Only these upstream files are modified, each in one or two spots:
 | `apps/web/src/components/ChatView.tsx`                      | applies a profile                      |
 | `apps/web/src/main.tsx`                                     | KaTeX stylesheet                       |
 | `apps/web/package.json`                                     | `katex`, `remark-math`, `rehype-katex` |
+| `third-party-licenses.config.json`                          | license notices for the math packages  |
 | `apps/web/src/components/chat/MessagesTimeline.tsx`         | drops the cite-selection button        |
 
 If a rebase conflicts, it will almost always be one of the small hunks in the table
