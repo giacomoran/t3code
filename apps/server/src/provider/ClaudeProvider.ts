@@ -573,7 +573,18 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
   const probeFailure =
     probeResult && Result.isFailure(probeResult) ? probeResult.failure : undefined;
   const skills = yield* discoverClaudeSkills(claudeSettings, cwd, resolvedEnvironment);
-  const slashCommands = [COMPACT_SLASH_COMMAND, ...(capabilities?.slashCommands ?? [])];
+  const slashCommands = [
+    COMPACT_SLASH_COMMAND,
+    ...(claudeSettings.percentQuotaReserve === ""
+      ? []
+      : [
+          {
+            name: "reserve",
+            description: "Continue this thread using the quota reserve until reset.",
+          },
+        ]),
+    ...(capabilities?.slashCommands ?? []),
+  ];
   const dedupedSlashCommands = dedupeSlashCommands(slashCommands);
 
   if (!capabilities) {
