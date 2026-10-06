@@ -20,35 +20,49 @@ message keep following the existing _Code font size_, so they do not move with i
 
 ### 2. Math (LaTeX) in chat
 
-`Settings → Appearance → Math (LaTeX) in chat` (on by default).
+`Settings → Appearance → Math (LaTeX) in chat`, with three settings:
 
-Renders formulas with KaTeX in all four delimiter styles:
+| Setting              | Renders                                 |
+| -------------------- | --------------------------------------- |
+| Off                  | nothing; formulas stay as source        |
+| **LaTeX delimiters** | `\(x\)`, `\[x\]`, `$$x$$` — the default |
+| Also `$…$`           | the above, plus single dollars          |
 
-| Written | Renders as |
-| ------- | ---------- |
-| `$x$`   | inline     |
-| `\(x\)` | inline     |
-| `$$x$$` | display    |
-| `\[x\]` | display    |
+**Single-dollar math is opt-in, and that is the point.** A single `$` is both how
+assistants write inline math and how prose writes money, and nothing in the syntax
+distinguishes them. "roughly `$`1K to date … `$`1K spent" is a valid formula spanning
+the sentence between the two amounts, and KaTeX renders it as one — the paragraph turns
+into italic math and the text between the prices disappears into it. There is no
+heuristic that reliably separates the two cases, so the ambiguous delimiter is the one
+you turn on deliberately; the unambiguous ones are always available.
+
+`\(x\)` is the delimiter to prefer for inline math. Assistants emit `$x$` more often,
+so turn on "Also `$…$`" if you read more formulas than prices and are willing to accept
+the failure above.
 
 Single-line `$$…$$` is promoted to a centered display equation — micromark only treats
 `$$` as display math when the delimiters sit on their own lines, but assistants emit the
-single-line form constantly.
+single-line form constantly. That promotion is also what makes `\[x\]` on its own line
+come out centred while `\(x\)` mid-sentence stays inline: both rewrite to `$$`, and
+whether a formula is display is decided afterwards from whether it is a paragraph's
+entire content.
 
-LaTeX's own `\(…\)` / `\[…\]` are rewritten to the dollar forms before parsing, because
-CommonMark treats `\(` as an escape for a literal `(` — by the time the markdown is a
-syntax tree the backslashes are gone and no plugin could see them. That rewrite is
-length-preserving on purpose: task-list toggling splices files by byte offset into this
-same string, so moving a single character would break checkboxes that follow a formula.
-Code fences and inline spans are copied through untouched.
+LaTeX's own `\(…\)` / `\[…\]` are rewritten to `$$` before parsing, because CommonMark
+treats `\(` as an escape for a literal `(` — by the time the markdown is a syntax tree
+the backslashes are gone and no plugin could see them. That rewrite is length-preserving
+on purpose: task-list toggling splices files by byte offset into this same string, so
+moving a single character would break checkboxes that follow a formula. Code fences and
+inline spans are copied through untouched.
 
 KaTeX runs _after_ HTML sanitization on purpose: it emits the MathML and presentational
 spans that make up a formula, none of which survive the sanitize schema. Author HTML is
 still sanitized first, so only markup KaTeX generates from already-sanitized math text
 gets through.
 
-Turn the setting off if `$` runs in prose (shell variables, prices) start getting
-mistaken for math.
+The web build generates open-source license notices and refuses any dependency without
+a notice file in its tarball. `remark-math` and `rehype-katex` ship none — the
+remark-math monorepo keeps a single `license` at its root — so
+`third-party-licenses.config.json` carries a generated MIT notice for each.
 
 ### 3. Model profiles
 
@@ -89,6 +103,34 @@ survives rebases.
 
 `MessagesTimeline` still declares `onCiteAssistantText` so its callers upstream keep
 compiling unchanged. It is never read.
+
+### 5. Claude and Codex quota reserves
+
+`Settings → Providers → Claude → Quota reserve (%)` (and the same for Codex) reserves
+`1`–`99` percent of the five-hour subscription window; an empty field disables it.
+Once usage reaches the threshold, new turns on that provider instance are failed
+before they reach the provider, and running turns are interrupted. Both end as a
+`usage_limit` failure carrying the window's reset time, so upstream's own limit
+banner, queue hold, Continue, snooze and auto-resume at reset all apply unchanged.
+`/reserve`, Continue, or auto-resume on a reserve stop lets that one thread spend
+the reserve until the window resets; the blocked prompt is replayed by upstream's
+missed-run handoff. See [Claude](docs/user/providers-claude.md#keep-a-quota-reserve)
+and [Codex](docs/user/providers-codex.md#keep-a-quota-reserve).
+
+Inspired by [spare10](https://github.com/alesdi/spare10). The guard reads the same
+per-instance usage snapshot as Stats, which the V2 adapters already update from
+streamed rate-limit events; it never probes an agent. Missing or stale readings log
+a warning once and let work continue.
+
+The logic lives in `apps/server/src/orchestration-v2/quotaReserve/`: the shared
+state and evaluation, a provider-adapter registry decorator that tracks running
+turns and turns a reserve-triggered interrupt into the failure (ordinary stops pass
+through), a monitor that reacts to snapshot changes plus the 5s scheduler tick, and
+a `ThreadManagementService` decorator for `/reserve` and continuations.
+`QuotaReserve` is a `Context.Reference` with a no-op default so upstream tests that
+build `ProviderTurnStartService` need no changes — which also means a wiring
+mistake in `runtimeLayer.ts` disables the feature silently instead of failing to
+compile.
 
 ## Updating from upstream
 
@@ -134,7 +176,7 @@ Exit codes: `0` proceed, `2` stop and read section 4 or 3 first.
 exist — it cannot see a field that kept its name but changed meaning, or a turn state
 that gained a new value. Sections 1 and 2 are there to be read by a human or an agent,
 not just skimmed for the verdict. After any non-trivial rebase, run the suites and
-actually exercise the four features before trusting the build.
+actually exercise the fork's features before trusting the build.
 
 Run the test suites too if the rebase touched anything the fork edits — see
 [Checks](#building-and-running).
@@ -161,23 +203,29 @@ files upstream does not have, which never conflict:
 - `apps/web/src/markdown-math-delimiters.ts`
 - `apps/web/src/modelProfiles.ts`
 - `apps/web/src/components/chat/ModelProfilesBar.tsx`
+- `apps/server/src/orchestration-v2/quotaReserve/*`
 
 Only these upstream files are modified, each in one or two spots:
 
-| File                                                        | Why                                    |
-| ----------------------------------------------------------- | -------------------------------------- |
-| `packages/contracts/src/settings.ts`                        | new settings + `ModelProfile` schema   |
-| `apps/web/src/appearanceFonts.ts`                           | `--font-size-chat` variable            |
-| `apps/web/src/routes/__root.tsx`                            | applies the chat size                  |
-| `apps/web/src/components/ChatMarkdown.tsx`                  | chat size + math plugins               |
-| `apps/web/src/components/settings/SettingsPanels.tsx`       | Appearance rows                        |
-| `apps/web/src/components/settings/SettingsFontPreviews.tsx` | chat font preview                      |
-| `apps/web/src/components/settings/settingsSearch.ts`        | makes the rows searchable              |
-| `apps/web/src/components/chat/ChatComposer.tsx`             | renders the profiles dropdown          |
-| `apps/web/src/components/ChatView.tsx`                      | applies a profile                      |
-| `apps/web/src/main.tsx`                                     | KaTeX stylesheet                       |
-| `apps/web/package.json`                                     | `katex`, `remark-math`, `rehype-katex` |
-| `apps/web/src/components/chat/MessagesTimeline.tsx`         | drops the cite-selection button        |
+| File                                                           | Why                                    |
+| -------------------------------------------------------------- | -------------------------------------- |
+| `packages/contracts/src/settings.ts`                           | new settings + `ModelProfile` schema   |
+| `apps/web/src/appearanceFonts.ts`                              | `--font-size-chat` variable            |
+| `apps/web/src/routes/__root.tsx`                               | applies the chat size                  |
+| `apps/web/src/components/ChatMarkdown.tsx`                     | chat size + math plugins               |
+| `apps/web/src/components/settings/SettingsPanels.tsx`          | Appearance rows                        |
+| `apps/web/src/components/settings/SettingsFontPreviews.tsx`    | chat font preview                      |
+| `apps/web/src/components/settings/settingsSearch.ts`           | makes the rows searchable              |
+| `apps/web/src/components/chat/ChatComposer.tsx`                | renders the profiles dropdown          |
+| `apps/web/src/components/ChatView.tsx`                         | applies a profile                      |
+| `apps/web/src/main.tsx`                                        | KaTeX stylesheet                       |
+| `apps/web/package.json`                                        | `katex`, `remark-math`, `rehype-katex` |
+| `third-party-licenses.config.json`                             | license notices for the math packages  |
+| `apps/web/src/components/chat/MessagesTimeline.tsx`            | drops the cite-selection button        |
+| `apps/server/src/orchestration-v2/ProviderTurnStartService.ts` | quota gate before a turn starts        |
+| `apps/server/src/orchestration-v2/runtimeLayer.ts`             | wires the quota decorators             |
+| `apps/server/src/provider/ClaudeProvider.ts`                   | `/reserve` slash command               |
+| `apps/server/src/provider/CodexProvider.ts`                    | `/reserve` slash command               |
 
 If a rebase conflicts, it will almost always be one of the small hunks in the table
 above.

@@ -52,6 +52,7 @@ import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as ProviderTurnStart from "./ProviderTurnStartService.ts";
 import * as RunExecutionService from "./RunExecutionService.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
+import { QuotaReserve, type QuotaReserveDecision } from "./quotaReserve/QuotaReserve.ts";
 
 const isDomainEvent = Schema.is(OrchestrationV2DomainEvent);
 
@@ -300,6 +301,7 @@ function makeLocalCommandHarness(input: {
     readonly nativeForkFrom?: "idle" | "busy";
     readonly switchedProvider?: boolean;
   };
+  readonly quotaDecision?: QuotaReserveDecision;
 }) {
   const now = DateTime.makeUnsafe("2026-09-04T12:00:00Z");
   const threadId = ThreadId.make("thread-native-account-command");
@@ -950,6 +952,10 @@ function makeLocalCommandHarness(input: {
         Layer.mock(RuntimePolicy.RuntimePolicyV2)({
           resolve: resolveRuntimePolicy,
         }),
+        Layer.succeed(QuotaReserve, {
+          ...QuotaReserve.defaultValue(),
+          evaluate: () => Effect.succeed(input.quotaDecision ?? ({ type: "allow" } as const)),
+        }),
       ),
     ),
   );
@@ -1556,6 +1562,55 @@ effectIt.effect("starts another provider in the same checkout while a turn is pe
     expect(second.projection().runs.at(-1)?.status).toBe("running");
     yield* Deferred.succeed(releaseTurn, undefined);
     yield* Fiber.join(pending);
+  }),
+);
+
+effectIt.effect("settles a quota-reserve block before opening the provider", () =>
+  Effect.gen(function* () {
+    const resetAt = "2026-09-04T14:00:00.000Z";
+    const harness = makeLocalCommandHarness({
+      text: "Keep working",
+      quotaDecision: {
+        type: "block",
+        resetsAt: resetAt,
+        failure: {
+          class: "usage_limit",
+          code: "quota_reserve",
+          message: "Codex paused to preserve your 10% quota reserve (91% used).",
+          retryable: false,
+          resetAt,
+        },
+      },
+    });
+
+    yield* harness.start;
+
+    expect(harness.open).not.toHaveBeenCalled();
+    expect(harness.startRootRun).not.toHaveBeenCalled();
+    expect(harness.projection().runs.at(-1)?.status).toBe("failed");
+    const failureItem = harness
+      .projection()
+      .turnItems.find((item) => item.type === "error" && item.failure.code === "quota_reserve");
+    expect(failureItem?.type).toBe("error");
+    if (failureItem?.type !== "error") return;
+    expect(failureItem.title).toBe("Usage limit reached");
+    expect(failureItem.failure.class).toBe("usage_limit");
+    expect(failureItem.failure.resetAt).toBe(resetAt);
+  }),
+);
+
+effectIt.effect("starts the provider when quota reserve allows the run", () =>
+  Effect.gen(function* () {
+    const harness = makeLocalCommandHarness({
+      text: "Keep working",
+      failReadsAfterRunning: true,
+      quotaDecision: { type: "allow" },
+    });
+
+    yield* harness.start;
+
+    expect(harness.open).toHaveBeenCalledOnce();
+    expect(harness.startRootRun).toHaveBeenCalledOnce();
   }),
 );
 

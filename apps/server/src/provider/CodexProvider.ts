@@ -871,6 +871,14 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     skills: snapshot.skills,
     slashCommands: [
       COMPACT_SLASH_COMMAND,
+      ...(codexSettings.percentQuotaReserve === ""
+        ? []
+        : [
+            {
+              name: "reserve",
+              description: "Continue this thread using the quota reserve until reset.",
+            },
+          ]),
       {
         name: "goal",
         description: "Set a goal Codex keeps working toward until it is done",

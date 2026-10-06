@@ -61,6 +61,7 @@ import {
   pendingRestartCancelledBackgroundWork,
   restartCancelledBackgroundWorkNote,
 } from "./RestartBackgroundNote.ts";
+import { QuotaReserve } from "./quotaReserve/QuotaReserve.ts";
 
 export class ProviderTurnStartError extends Schema.TaggedError<ProviderTurnStartError>()(
   "ProviderTurnStartError",
@@ -157,6 +158,7 @@ export const layer: Layer.Layer<
     const providerAuth = yield* ProviderAuthService.ProviderAuthService;
     const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
     const providerSessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
+    const quotaReserve = yield* QuotaReserve;
     const runExecution = yield* RunExecutionService.RunExecutionServiceV2;
     const runtimePolicy = yield* RuntimePolicy.RuntimePolicyV2;
     const isManagedWorktreePath = yield* makeIsManagedWorktreePath;
@@ -688,6 +690,26 @@ export const layer: Layer.Layer<
         inheritedBackgroundTurnItems,
       });
       const { isCurrentAttemptInStatus } = runControls;
+
+      const quotaDecision = yield* quotaReserve.evaluate(
+        run.providerInstanceId,
+        projection.thread.id,
+      );
+      if (quotaDecision.type === "block") {
+        yield* settleRunBeforeStart({
+          signal: "quota-reserve",
+          status: "failed",
+          now: yield* DateTime.now,
+          providerInstanceId: run.providerInstanceId,
+          itemProviderThreadId: providerThread.id,
+          item: {
+            type: "error",
+            title: "Usage limit reached",
+            failure: quotaDecision.failure,
+          },
+        });
+        return;
+      }
 
       // A side chat shares its parent's worktree; the turn that gets its context asks before acting.
       const resolvedRuntimePolicy = yield* runtimePolicy.resolve({

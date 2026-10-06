@@ -11,6 +11,7 @@ import {
   ClientSettingsSchema,
   ClientSettingsPatch,
   ClaudeSettings,
+  CodexSettings,
   DEFAULT_SERVER_SETTINGS,
   globalIdleCompaction,
   idleCompactionPatch,
@@ -38,6 +39,7 @@ const decodeStringOnlyEnvironment = Schema.decodeUnknownSync(
 const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
 const encodeServerSettingsPatch = Schema.encodeSync(ServerSettingsPatch);
+const decodeCodexSettings = Schema.decodeUnknownSync(CodexSettings);
 const decodeClaudeSettings = Schema.decodeUnknownSync(ClaudeSettings);
 
 describe("storage cleanup settings", () => {
@@ -482,5 +484,31 @@ describe("server model preferences", () => {
     const input = { favorites: [], providerModelPreferences: {} };
     expect(encodeServerSettings(decodeServerSettings(input))).toMatchObject(input);
     expect(decodeServerSettingsPatch(input)).toEqual(input);
+  });
+});
+
+// Provider settings now reach the server only inside a provider instance's
+// untyped `config`, so the driver schema is the one place a reserve is checked.
+describe("Claude quota reserve settings", () => {
+  it("defaults to disabled and accepts only 1-99", () => {
+    expect(decodeClaudeSettings({}).percentQuotaReserve).toBe("");
+    for (const value of ["", "1", "10", "99"]) {
+      expect(decodeClaudeSettings({ percentQuotaReserve: value }).percentQuotaReserve).toBe(value);
+    }
+    for (const value of ["0", "100", "10.5", "-1", "ten"]) {
+      expect(() => decodeClaudeSettings({ percentQuotaReserve: value })).toThrow();
+    }
+  });
+});
+
+describe("Codex quota reserve settings", () => {
+  it("defaults to disabled and accepts only 1-99", () => {
+    expect(decodeCodexSettings({}).percentQuotaReserve).toBe("");
+    for (const value of ["", "1", "10", "99"]) {
+      expect(decodeCodexSettings({ percentQuotaReserve: value }).percentQuotaReserve).toBe(value);
+    }
+    for (const value of ["0", "100", "10.5", "-1", "ten"]) {
+      expect(() => decodeCodexSettings({ percentQuotaReserve: value })).toThrow();
+    }
   });
 });

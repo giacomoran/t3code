@@ -56,6 +56,10 @@ import * as ThreadForkService from "./ThreadForkService.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
+import * as QuotaReserve from "./quotaReserve/QuotaReserve.ts";
+import * as QuotaReserveAdapterRegistry from "./quotaReserve/QuotaReserveAdapterRegistry.ts";
+import * as QuotaReserveMonitor from "./quotaReserve/QuotaReserveMonitor.ts";
+import * as QuotaReserveThreadManagement from "./quotaReserve/QuotaReserveThreadManagement.ts";
 
 export const layerEventInfrastructure = Layer.mergeAll(
   OrchestrationEventStore.layer,
@@ -122,8 +126,13 @@ const layerContextHandoffServiceProvided = ContextHandoffService.layer.pipe(
   Layer.provide(IdAllocator.layer),
 );
 
+const layerQuotaReserveProvided = QuotaReserve.layer;
+const layerProviderAdapterRegistryBase = ProviderAdapterRegistry.layerFromProviderInstanceRegistry;
+const layerProviderAdapterRegistryProvided = QuotaReserveAdapterRegistry.layer.pipe(
+  Layer.provide(Layer.merge(layerProviderAdapterRegistryBase, layerQuotaReserveProvided)),
+);
 const layerProviderSwitchServiceProvided = ProviderSwitchService.layer.pipe(
-  Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
+  Layer.provide(layerProviderAdapterRegistryProvided),
 );
 
 const layerCommandOutputHubProvided = CommandOutputHub.layer.pipe(
@@ -134,7 +143,7 @@ const layerProviderSessionManagerProvided = ProviderSessionManager.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
       layerCommandOutputHubProvided,
-      ProviderAdapterRegistry.layerFromProviderInstanceRegistry,
+      layerProviderAdapterRegistryProvided,
       layerEventSink,
       IdAllocator.layer,
       layerProviderEventIngestorProvided,
@@ -172,6 +181,7 @@ const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pip
       layerProviderAuthServiceProvided,
       layerRunExecutionServiceProvided,
       layerRuntimePolicyProvided,
+      layerQuotaReserveProvided,
     ),
   ),
 );
@@ -221,7 +231,7 @@ const layerOrchestratorProvided = Orchestrator.layer.pipe(
       layerContextHandoffServiceProvided,
       IdAllocator.layer,
       ProjectStore.layer,
-      ProviderAdapterRegistry.layerFromProviderInstanceRegistry,
+      layerProviderAdapterRegistryProvided,
       // Reuse the continuation worker's layer reference so memoization shares one request queue.
       ProviderContinuationRequests.layer,
       layerProviderEventIngestorProvided,
@@ -247,7 +257,7 @@ const layerAgentSessionImporterProvided = AgentSessionImporter.layer.pipe(
   ),
 );
 
-const layerThreadManagementProvided = ThreadManagementService.layerWithLegacyImporter.pipe(
+const layerThreadManagementBase = ThreadManagementService.layerWithLegacyImporter.pipe(
   Layer.provide(
     Layer.mergeAll(
       layerOrchestratorProvided,
@@ -256,6 +266,9 @@ const layerThreadManagementProvided = ThreadManagementService.layerWithLegacyImp
       layerProviderSessionManagerProvided,
     ),
   ),
+);
+const layerThreadManagementProvided = QuotaReserveThreadManagement.layer.pipe(
+  Layer.provide(Layer.merge(layerThreadManagementBase, layerQuotaReserveProvided)),
 );
 export const layerProjectSetupScriptRunner = ProjectSetupScriptRunner.layer.pipe(
   Layer.provide(layerProjectService),
@@ -387,6 +400,7 @@ export const layerProduction = Layer.mergeAll(
       ),
     ),
   ),
+  QuotaReserveMonitor.layer.pipe(Layer.provide(layerQuotaReserveProvided)),
   layerProviderContinuationWorkerProvided,
   layerAgentSessionImporterProvided,
   EffectOutbox.layerPruneWorker.pipe(Layer.provide(EffectOutbox.layer)),

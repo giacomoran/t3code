@@ -99,6 +99,20 @@ when it resets, when Codex reports them. Send the message again after the reset.
 message also says whether your workspace owner needs to add credits or raise the
 spend limit to continue sooner.
 
+## Keep a quota reserve
+
+Set **Settings > Providers > Codex > Quota reserve (%)** to a whole number from
+`1` to `99`. For example, `10` pauses threads on that Codex instance when the
+five-hour window reaches 90% usage. Leave the field empty to disable the reserve.
+
+When the reserve is reached, T3 Code uses the normal usage-limit stop and recovery
+controls. Press **Continue** or send `/reserve` to let that thread spend the reserve
+until the current window resets; other threads on the instance remain protected.
+Automatic resume works through the same usage-limit recovery setting. If the usage
+reading is unavailable or stale, work continues without reserve protection until a
+current reading is available. The reserve is approximate because usage reports can
+lag work already in flight, and restarting T3 Code clears thread authorizations.
+
 ## Send feedback to OpenAI
 
 In an existing Codex thread, send `/feedback` with an optional description, for

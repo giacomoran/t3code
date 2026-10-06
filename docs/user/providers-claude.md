@@ -75,6 +75,20 @@ Claude Code holds the turn until that window reopens, so it can keep showing as
 working. Wait for the reset, or stop the turn and continue later. The warning's
 timestamp shows when the displayed wait started.
 
+### Keep a quota reserve
+
+Set **Settings > Providers > Claude > Quota reserve (%)** to a whole number from
+`1` to `99`. For example, `10` pauses threads on that Claude instance when the
+five-hour window reaches 90% usage. Leave the field empty to disable the reserve.
+
+When the reserve is reached, T3 Code uses the normal usage-limit stop and recovery
+controls. Press **Continue** or send `/reserve` to let that thread spend the reserve
+until the current window resets; other threads on the instance remain protected.
+Automatic resume works through the same usage-limit recovery setting. If the usage
+reading is unavailable or stale, work continues without reserve protection until a
+current reading is available. The reserve is approximate because usage reports can
+lag work already in flight, and restarting T3 Code clears thread authorizations.
+
 ## Skills
 
 Claude skills come from the config directory's `skills` folder and the project's
