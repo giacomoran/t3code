@@ -104,6 +104,34 @@ survives rebases.
 `MessagesTimeline` still declares `onCiteAssistantText` so its callers upstream keep
 compiling unchanged. It is never read.
 
+### 5. Claude and Codex quota reserves
+
+`Settings → Providers → Claude → Quota reserve (%)` (and the same for Codex) reserves
+`1`–`99` percent of the five-hour subscription window; an empty field disables it.
+Once usage reaches the threshold, new turns on that provider instance are failed
+before they reach the provider, and running turns are interrupted. Both end as a
+`usage_limit` failure carrying the window's reset time, so upstream's own limit
+banner, queue hold, Continue, snooze and auto-resume at reset all apply unchanged.
+`/reserve`, Continue, or auto-resume on a reserve stop lets that one thread spend
+the reserve until the window resets; the blocked prompt is replayed by upstream's
+missed-run handoff. See [Claude](docs/user/providers-claude.md#keep-a-quota-reserve)
+and [Codex](docs/user/providers-codex.md#keep-a-quota-reserve).
+
+Inspired by [spare10](https://github.com/alesdi/spare10). The guard reads the same
+per-instance usage snapshot as Stats, which the V2 adapters already update from
+streamed rate-limit events; it never probes an agent. Missing or stale readings log
+a warning once and let work continue.
+
+The logic lives in `apps/server/src/orchestration-v2/quotaReserve/`: the shared
+state and evaluation, a provider-adapter registry decorator that tracks running
+turns and turns a reserve-triggered interrupt into the failure (ordinary stops pass
+through), a monitor that reacts to snapshot changes plus the 5s scheduler tick, and
+a `ThreadManagementService` decorator for `/reserve` and continuations.
+`QuotaReserve` is a `Context.Reference` with a no-op default so upstream tests that
+build `ProviderTurnStartService` need no changes — which also means a wiring
+mistake in `runtimeLayer.ts` disables the feature silently instead of failing to
+compile.
+
 ## Updating from upstream
 
 This fork is not auto-updated — that is the trade for it not silently reverting to an
@@ -148,7 +176,7 @@ Exit codes: `0` proceed, `2` stop and read section 4 or 3 first.
 exist — it cannot see a field that kept its name but changed meaning, or a turn state
 that gained a new value. Sections 1 and 2 are there to be read by a human or an agent,
 not just skimmed for the verdict. After any non-trivial rebase, run the suites and
-actually exercise the four features before trusting the build.
+actually exercise the fork's features before trusting the build.
 
 Run the test suites too if the rebase touched anything the fork edits — see
 [Checks](#building-and-running).
@@ -175,24 +203,29 @@ files upstream does not have, which never conflict:
 - `apps/web/src/markdown-math-delimiters.ts`
 - `apps/web/src/modelProfiles.ts`
 - `apps/web/src/components/chat/ModelProfilesBar.tsx`
+- `apps/server/src/orchestration-v2/quotaReserve/*`
 
 Only these upstream files are modified, each in one or two spots:
 
-| File                                                        | Why                                    |
-| ----------------------------------------------------------- | -------------------------------------- |
-| `packages/contracts/src/settings.ts`                        | new settings + `ModelProfile` schema   |
-| `apps/web/src/appearanceFonts.ts`                           | `--font-size-chat` variable            |
-| `apps/web/src/routes/__root.tsx`                            | applies the chat size                  |
-| `apps/web/src/components/ChatMarkdown.tsx`                  | chat size + math plugins               |
-| `apps/web/src/components/settings/SettingsPanels.tsx`       | Appearance rows                        |
-| `apps/web/src/components/settings/SettingsFontPreviews.tsx` | chat font preview                      |
-| `apps/web/src/components/settings/settingsSearch.ts`        | makes the rows searchable              |
-| `apps/web/src/components/chat/ChatComposer.tsx`             | renders the profiles dropdown          |
-| `apps/web/src/components/ChatView.tsx`                      | applies a profile                      |
-| `apps/web/src/main.tsx`                                     | KaTeX stylesheet                       |
-| `apps/web/package.json`                                     | `katex`, `remark-math`, `rehype-katex` |
-| `third-party-licenses.config.json`                          | license notices for the math packages  |
-| `apps/web/src/components/chat/MessagesTimeline.tsx`         | drops the cite-selection button        |
+| File                                                           | Why                                    |
+| -------------------------------------------------------------- | -------------------------------------- |
+| `packages/contracts/src/settings.ts`                           | new settings + `ModelProfile` schema   |
+| `apps/web/src/appearanceFonts.ts`                              | `--font-size-chat` variable            |
+| `apps/web/src/routes/__root.tsx`                               | applies the chat size                  |
+| `apps/web/src/components/ChatMarkdown.tsx`                     | chat size + math plugins               |
+| `apps/web/src/components/settings/SettingsPanels.tsx`          | Appearance rows                        |
+| `apps/web/src/components/settings/SettingsFontPreviews.tsx`    | chat font preview                      |
+| `apps/web/src/components/settings/settingsSearch.ts`           | makes the rows searchable              |
+| `apps/web/src/components/chat/ChatComposer.tsx`                | renders the profiles dropdown          |
+| `apps/web/src/components/ChatView.tsx`                         | applies a profile                      |
+| `apps/web/src/main.tsx`                                        | KaTeX stylesheet                       |
+| `apps/web/package.json`                                        | `katex`, `remark-math`, `rehype-katex` |
+| `third-party-licenses.config.json`                             | license notices for the math packages  |
+| `apps/web/src/components/chat/MessagesTimeline.tsx`            | drops the cite-selection button        |
+| `apps/server/src/orchestration-v2/ProviderTurnStartService.ts` | quota gate before a turn starts        |
+| `apps/server/src/orchestration-v2/runtimeLayer.ts`             | wires the quota decorators             |
+| `apps/server/src/provider/ClaudeProvider.ts`                   | `/reserve` slash command               |
+| `apps/server/src/provider/CodexProvider.ts`                    | `/reserve` slash command               |
 
 If a rebase conflicts, it will almost always be one of the small hunks in the table
 above.

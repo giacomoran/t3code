@@ -16,6 +16,7 @@ describe("ProviderSettingsForm helpers", () => {
       "binaryPath",
       "homePath",
       "shadowHomePath",
+      "percentQuotaReserve",
       "launchArgs",
     ]);
   });
@@ -102,6 +103,7 @@ describe("ProviderSettingsForm helpers", () => {
       "binaryPath",
       "homePath",
       "autoCompactWindow",
+      "percentQuotaReserve",
       "launchArgs",
     ]);
   });

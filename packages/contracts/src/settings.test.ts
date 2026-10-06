@@ -7,6 +7,7 @@ import {
   ClientSettingsSchema,
   ClientSettingsPatch,
   ClaudeSettings,
+  CodexSettings,
   DEFAULT_SERVER_SETTINGS,
   requiredScopesForProjectMutation,
   resolveProjectProviderInstanceEnabled,
@@ -21,6 +22,7 @@ const encodeClientSettings = Schema.encodeSync(ClientSettingsSchema);
 const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
 const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
+const decodeCodexSettings = Schema.decodeUnknownSync(CodexSettings);
 const decodeClaudeSettings = Schema.decodeUnknownSync(ClaudeSettings);
 
 describe("ServerSettings response streaming", () => {
@@ -1212,5 +1214,31 @@ describe("server model preferences", () => {
     expect(decodeServerSettingsPatch({ migrateModelPreferences: input })).toEqual({
       migrateModelPreferences: input,
     });
+  });
+});
+
+// Provider settings now reach the server only inside a provider instance's
+// untyped `config`, so the driver schema is the one place a reserve is checked.
+describe("Claude quota reserve settings", () => {
+  it("defaults to disabled and accepts only 1-99", () => {
+    expect(decodeClaudeSettings({}).percentQuotaReserve).toBe("");
+    for (const value of ["", "1", "10", "99"]) {
+      expect(decodeClaudeSettings({ percentQuotaReserve: value }).percentQuotaReserve).toBe(value);
+    }
+    for (const value of ["0", "100", "10.5", "-1", "ten"]) {
+      expect(() => decodeClaudeSettings({ percentQuotaReserve: value })).toThrow();
+    }
+  });
+});
+
+describe("Codex quota reserve settings", () => {
+  it("defaults to disabled and accepts only 1-99", () => {
+    expect(decodeCodexSettings({}).percentQuotaReserve).toBe("");
+    for (const value of ["", "1", "10", "99"]) {
+      expect(decodeCodexSettings({ percentQuotaReserve: value }).percentQuotaReserve).toBe(value);
+    }
+    for (const value of ["0", "100", "10.5", "-1", "ten"]) {
+      expect(() => decodeCodexSettings({ percentQuotaReserve: value })).toThrow();
+    }
   });
 });
