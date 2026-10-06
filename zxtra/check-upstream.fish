@@ -102,7 +102,15 @@ for row in \
     "profile:: trait payload stored in a profile               :: packages/contracts/src/model.ts :: ProviderOptionSelections" \
     "profile:: client-settings writer the composer uses        :: apps/web/src/hooks/useSettings.ts :: useUpdateClientSettings" \
     "search :: the scan call the index-creation fix adds       :: apps/server/src/workspace/WorkspaceSearchIndex.ts :: scanFiles" \
-    "search :: readiness wait the scan is paired with          :: apps/server/src/workspace/WorkspaceSearchIndex.ts :: waitForIndexReady"
+    "search :: readiness wait the scan is paired with          :: apps/server/src/workspace/WorkspaceSearchIndex.ts :: waitForIndexReady" \
+    "quota  :: pre-start failure path the gate reuses          :: apps/server/src/orchestration-v2/ProviderTurnStartService.ts :: settleRunBeforeStart" \
+    "quota  :: blocked prompt replayed on the next start       :: apps/server/src/orchestration-v2/ProviderTurnStartService.ts :: missedRuns" \
+    "quota  :: registry the turn tracker decorates             :: apps/server/src/orchestration-v2/ProviderAdapterRegistry.ts :: layerFromProviderInstanceRegistry" \
+    "quota  :: usage-limit state a reserve stop must match     :: packages/shared/src/orchestrationV2ThreadError.ts :: usageLimitBlockedRun" \
+    "quota  :: Continue on a stopped run (authorizes reserve)  :: apps/server/src/orchestration-v2/Orchestrator.ts :: manualContinuationOfRunId" \
+    "quota  :: auto-resume at reset                            :: apps/server/src/orchestration-v2/UsageLimitRecoveryWorker.ts :: usageLimitContinuationOfRunId" \
+    "quota  :: Claude streams limits into the shared snapshot  :: apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts :: onUsageLimits" \
+    "quota  :: Codex streams limits into the shared snapshot   :: apps/server/src/orchestration-v2/Adapters/CodexAdapterV2.ts :: onUsageLimits"
     set --local parts (string split "::" -- $row)
     set --local feature (string trim -- $parts[1])
     set --local why (string trim -- $parts[2])

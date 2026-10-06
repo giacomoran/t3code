@@ -621,6 +621,8 @@ export function makeProviderSettingsSchema<const Fields extends Schema.Struct.Fi
   );
 }
 
+const PATTERN_CODEX_QUOTA_RESERVE = /^(?:|[1-9]|[1-9]\d)$/;
+
 export const CodexSettings = makeProviderSettingsSchema(
   {
     setupMode: Schema.optionalKey(Schema.Literals(["managed", "existing"])).pipe(
@@ -667,18 +669,29 @@ export const CodexSettings = makeProviderSettingsSchema(
         description: "Additional CLI arguments passed to codex app-server on session start.",
       }),
     ),
+    percentQuotaReserve: TrimmedString.check(Schema.isPattern(PATTERN_CODEX_QUOTA_RESERVE)).pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Quota reserve (%)",
+        description:
+          "Stop Codex threads before using this much of the five-hour quota. Enter 1–99, or leave empty to disable. Send /reserve to continue a thread using its reserve until the window resets.",
+        providerSettingsForm: { placeholder: "e.g. 10", clearWhenEmpty: "omit" },
+      }),
+    ),
     customModels: Schema.Array(CustomModelSetting).pipe(
       Schema.withDecodingDefault(Effect.succeed([])),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
   },
   {
-    order: ["binaryPath", "homePath", "shadowHomePath", "launchArgs"],
+    order: ["binaryPath", "homePath", "shadowHomePath", "percentQuotaReserve", "launchArgs"],
   },
 );
 export type CodexSettings = typeof CodexSettings.Type;
 
 const CLAUDE_AUTO_COMPACT_WINDOW_PATTERN = /^(?:|[1-9]\d{5}|1000000)$/;
+
+const PATTERN_CLAUDE_QUOTA_RESERVE = /^(?:|[1-9]|[1-9]\d)$/;
 
 export const ClaudeSettings = makeProviderSettingsSchema(
   {
@@ -717,6 +730,15 @@ export const ClaudeSettings = makeProviderSettingsSchema(
         },
       }),
     ),
+    percentQuotaReserve: TrimmedString.check(Schema.isPattern(PATTERN_CLAUDE_QUOTA_RESERVE)).pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Quota reserve (%)",
+        description:
+          "Stop Claude threads before using this much of the five-hour quota. Enter 1–99, or leave empty to disable. Send /reserve to continue a thread using its reserve until the window resets.",
+        providerSettingsForm: { placeholder: "e.g. 10", clearWhenEmpty: "omit" },
+      }),
+    ),
     autoCompactWindow: TrimmedString.check(
       Schema.isPattern(CLAUDE_AUTO_COMPACT_WINDOW_PATTERN),
     ).pipe(
@@ -733,7 +755,7 @@ export const ClaudeSettings = makeProviderSettingsSchema(
     ),
   },
   {
-    order: ["binaryPath", "homePath", "autoCompactWindow", "launchArgs"],
+    order: ["binaryPath", "homePath", "autoCompactWindow", "percentQuotaReserve", "launchArgs"],
   },
 );
 export type ClaudeSettings = typeof ClaudeSettings.Type;
