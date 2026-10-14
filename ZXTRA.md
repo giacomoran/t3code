@@ -147,6 +147,10 @@ pnpm tc                          # sanity-check the rebase before building
 ./zxtra/build-and-install.fish   # build, sign, back up, install
 ```
 
+Then rebuild every Linux server that runs the fork — see
+[Running the fork's server on Linux](#running-the-forks-server-on-linux). The desktop app
+and the servers it connects to must come from the same fork.
+
 ### The pre-flight check
 
 `zxtra/check-upstream.fish` fetches and reports; it changes nothing. Run it — or hand
@@ -278,6 +282,52 @@ app's data directory, so threads and projects carry over. Secrets held by Electr
 `safeStorage` (saved SSH/connection credentials) are keyed to the code signature, which
 changes from Apple-signed to ad-hoc — expect to re-enter those once. Local environments
 are unaffected.
+
+## Running the fork's server on Linux
+
+The desktop app also connects to a Linux server (epsilon) over Tailscale, and that server
+runs this fork too. Mixing builds breaks in two ways:
+
+- **"Client not supported"**: the app and server speak different orchestration protocol
+  versions (`ORCHESTRATION_PROTOCOL_VERSION` in `packages/contracts/src/environment.ts`).
+- **"The authenticated token is missing required scope"**: when pairing, the app requests
+  the scopes it knows about, and a session keeps the scopes it was issued with. After the
+  app gains a scope, pair again (`t3 pair --tailscale` on the server, then remove and re-add
+  the environment in the app).
+
+The fork's checkout on epsilon lives in `~/Projects/t3code`. Updating it after a rebase:
+
+```fish
+cd ~/Projects/t3code
+git fetch origin; and git reset --hard origin/zxtra   # the rebase was force-pushed
+pnpm install
+./zxtra/build-and-install-linux.fish
+```
+
+`zxtra/build-and-install-linux.fish` follows the steps upstream's release workflow uses for
+the Linux CLI archive:
+
+1. Stamps the version `<upstream version>-zxtra.g<commit>` into the release manifests, and
+   restores them when the build ends. The service keys its runtime folder on the version
+   the binary reports, so the fork needs a version of its own.
+2. Builds the web client and server bundle, the Rust resource monitor, and the single
+   executable. The executable step runs on Node `SEA_NODE_VERSION` (from
+   `apps/server/vite.config.ts`, installed through mise), because `vp pack` needs a Node
+   25.7+ host.
+3. Packs the CLI archive, then refuses to install it if it lacks the fork's markers or
+   reports the wrong version.
+4. Unpacks it into `~/.t3/runtime/versions/<version>`, where `t3 service install` looks
+   for a pinned runtime, and switches the service with `--allow-downgrade`: a semver
+   prerelease such as `0.0.45-zxtra.g…` sorts below `0.0.45`.
+
+The previous runtime stays in `~/.t3/runtime/versions`, and the script prints the
+command to roll back to it. **Don't run `t3 update` on the server**: it would replace the
+fork with an upstream release. A local build also has no T3 Connect, whose relay
+settings only release builds embed; reach the server over Tailscale instead.
+
+Linux toolchain: Node and Rust from `.tool-versions` through mise (recreate it as in
+[Toolchain](#toolchain)), pnpm from `packageManager`, plus `libsecret-1-dev` and
+`pkg-config` from apt.
 
 ## Building and running
 
