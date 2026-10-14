@@ -164,9 +164,7 @@ feature just quietly stops working. So the check verifies those assumptions by n
 3. **Path collisions** — upstream adding a file the fork also adds.
 4. **Load-bearing assumptions** — every upstream symbol the fork depends on, checked
    against the upstream tree. A miss names the symbol, the file, and what it holds up.
-5. **Dependency drift** — the markdown and indexing packages the fork leans on. A
-   `@ff-labs/fff-node` bump is the signal to re-check the index-scan fix, which exists
-   to work around that library's behaviour.
+5. **Dependency drift** — the markdown packages the fork leans on.
 6. **Did upstream build it themselves?** — a hit means the fork's patch may now be
    redundant, and carrying it forward could conflict in behaviour rather than in text.
 
