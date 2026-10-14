@@ -100,9 +100,7 @@ for row in \
     "profile:: applying a profile as a complete snapshot       :: apps/web/src/composerDraftStore.ts :: replaceOptions" \
     "profile:: model-change guards a profile routes through    :: apps/web/src/components/ChatView.tsx :: onProviderModelSelect" \
     "profile:: trait payload stored in a profile               :: packages/contracts/src/model.ts :: ProviderOptionSelections" \
-    "profile:: client-settings writer the composer uses        :: apps/web/src/hooks/useSettings.ts :: useUpdateClientSettings" \
-    "search :: the scan call the index-creation fix adds       :: apps/server/src/workspace/WorkspaceSearchIndex.ts :: scanFiles" \
-    "search :: readiness wait the scan is paired with          :: apps/server/src/workspace/WorkspaceSearchIndex.ts :: waitForIndexReady"
+    "profile:: client-settings writer the composer uses        :: apps/web/src/hooks/useSettings.ts :: useUpdateClientSettings"
     set --local parts (string split "::" -- $row)
     set --local feature (string trim -- $parts[1])
     set --local why (string trim -- $parts[2])
@@ -127,15 +125,6 @@ for dep in react-markdown rehype-sanitize rehype-raw remark-gfm
         echo "  CHANGED $dep: ours $ours / upstream $theirs"
     else
         echo "  same    $dep $ours"
-    end
-end
-set --local ours_fff (git show HEAD:package.json | string match -r "\"@ff-labs/fff-node\": \"[^\"]+\"")
-set --local theirs_fff (git show $ref:package.json | string match -r "\"@ff-labs/fff-node\": \"[^\"]+\"")
-test -n "$ours_fff$theirs_fff"; and begin
-    if test "$ours_fff" != "$theirs_fff"
-        echo "  CHANGED fff-node: ours $ours_fff / upstream $theirs_fff  (re-check the index-scan fix)"
-    else
-        echo "  same    fff-node $ours_fff"
     end
 end
 
