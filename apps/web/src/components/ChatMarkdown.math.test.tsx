@@ -7,6 +7,9 @@ vi.mock("../state/use-atom-query-runner", () => ({ useAtomQueryRunner: () => vi.
 vi.mock("../state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
 vi.mock("../state/session", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../state/session")>()),
+  // Formulas need no environment grants; the real hooks read the mocked atom.
+  useEnvironmentScope: () => false,
+  readEnvironmentScope: () => false,
   usePreparedConnection: () => ({ _tag: "Loading" }),
 }));
 vi.mock("../state/entities", () => ({
@@ -24,6 +27,7 @@ vi.mock("../editorPreferences", () => ({
 vi.mock("~/lib/openPullRequestLink", () => ({
   findProjectOnChangeRequestHost: () => undefined,
   parseChangeRequestUrl: () => null,
+  resolvePullRequestPreviewTarget: () => null,
   useOpenChangeRequestLink: () => vi.fn(),
 }));
 
