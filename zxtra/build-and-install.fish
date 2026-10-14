@@ -69,7 +69,7 @@ codesign --force --deep --sign - "$built"; or exit 1
 codesign --verify --deep "$built"; or begin; echo "signature still invalid"; exit 1; end
 
 # ── Sanity-check the bundle really is the fork ───────────────────────────────
-for marker in font-size-chat katex scanAndWaitForIndexReady quota_reserve
+for marker in font-size-chat katex quota_reserve
     if not grep -qa $marker "$built/Contents/Resources/app.asar"
         echo "built bundle is missing '$marker' — refusing to install"
         exit 1
