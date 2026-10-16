@@ -40,6 +40,13 @@ set --export CARGO_TARGET_DIR $repo/native/resource-monitor/target
 # hunting for one. The bundle is ad-hoc signed further down instead.
 set --export CSC_IDENTITY_AUTO_DISCOVERY false
 
+# T3 Connect's public configuration, which upstream's release workflow injects.
+# Without it the app hides T3 Connect sign-in and its server has no `t3 connect`.
+for line in (string match --invert --regex '^\s*(#|$)' < $repo/zxtra/t3-connect.env)
+    set --local entry (string split --max 1 = $line)
+    set --export $entry[1] $entry[2]
+end
+
 if test (count (pgrep -f "$app_name/Contents/MacOS")) -gt 0
     echo "note: T3 Code is running — quit it before launching the new build."
 end
@@ -74,6 +81,10 @@ for marker in font-size-chat katex quota_reserve
         echo "built bundle is missing '$marker' — refusing to install"
         exit 1
     end
+end
+if not grep -qa $T3CODE_RELAY_URL "$built/Contents/Resources/app.asar"
+    echo "built bundle is missing the T3 Connect relay URL — refusing to install"
+    exit 1
 end
 
 # The release build ships an app-update.yml pointing at pingdotgg/t3code. A
