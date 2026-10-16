@@ -1,6 +1,6 @@
 #!/usr/bin/env fish
 #
-# Build this fork and install it over /Applications/T3 Code (Alpha).app.
+# Build this fork and install it over /Applications/T3 Code (Beta).app.
 #
 # Run it after rebasing onto upstream. Everything here exists because a plain
 # `pnpm dist:desktop:dmg:arm64` is not enough on this machine — see the notes
@@ -9,8 +9,12 @@
 set --local repo (cd (dirname (status filename))/..; and pwd)
 cd $repo; or exit 1
 
-set --local app_name "T3 Code (Alpha).app"
+set --local app_name "T3 Code (Beta).app"
 set --local installed "/Applications/$app_name"
+# Upstream renamed the app from "(Alpha)" to "(Beta)" in v0.1.0. Both share the
+# bundle id and data directory, so an Alpha copy is backed up on install like
+# the app it replaces, instead of lingering beside it as a second launcher.
+set --local installed_legacy "/Applications/T3 Code (Alpha).app"
 
 # ── Toolchain ────────────────────────────────────────────────────────────────
 # Node and Rust are pinned in .tool-versions, which is deliberately kept out of
@@ -47,7 +51,8 @@ for line in (string match --invert --regex '^\s*(#|$)' < $repo/zxtra/t3-connect.
     set --export $entry[1] $entry[2]
 end
 
-if test (count (pgrep -f "$app_name/Contents/MacOS")) -gt 0
+# pgrep takes a regex; the dots stand in for the parentheses in the app name.
+if test (count (pgrep -f 'T3 Code .(Alpha|Beta)..app/Contents/')) -gt 0
     echo "note: T3 Code is running — quit it before launching the new build."
 end
 
@@ -101,6 +106,10 @@ set --local stamp (date +%Y%m%d-%H%M%S)
 if test -d "$installed"
     echo "==> backing up current app"
     mv "$installed" "/Applications/$app_name.$stamp.bak"; or exit 1
+end
+if test -d "$installed_legacy"
+    echo "==> backing up the pre-rename Alpha app"
+    mv "$installed_legacy" "$installed_legacy.$stamp.bak"; or exit 1
 end
 echo "==> installing"
 ditto "$built" "$installed"; or exit 1
