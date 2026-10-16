@@ -95,7 +95,7 @@ for row in \
     "settings:: defaults derived from the schema               :: packages/contracts/src/settings.ts :: DEFAULT_UNIFIED_SETTINGS" \
     "math   :: remark plugin list the math plugins extend      :: apps/web/src/components/ChatMarkdown.tsx :: CHAT_MARKDOWN_REMARK_PLUGINS" \
     "math   :: rehype plugin list KaTeX is appended to         :: apps/web/src/components/ChatMarkdown.tsx :: CHAT_MARKDOWN_REHYPE_PLUGINS" \
-    "math   :: sanitize schema KaTeX must run after            :: apps/web/src/components/ChatMarkdown.tsx :: CHAT_MARKDOWN_SANITIZE_SCHEMA" \
+    "math   :: sanitize schema KaTeX must run after            :: packages/shared/src/markdownPipeline.ts :: CHAT_MARKDOWN_SANITIZE_SCHEMA" \
     "math   :: task offsets: why the delimiter rewrite keeps length :: apps/web/src/components/files/filePreviewMode.ts :: setMarkdownTaskChecked" \
     "profile:: applying a profile as a complete snapshot       :: apps/web/src/composerDraftStore.ts :: replaceOptions" \
     "profile:: model-change guards a profile routes through    :: apps/web/src/components/ChatView.tsx :: onProviderModelSelect" \
