@@ -32,6 +32,14 @@ if test "$rust_minor" -lt 95
     exit 1
 end
 
+# T3 Connect's public configuration, which upstream's release workflow injects.
+# Without it `t3 connect` is a stub, so the server cannot link to T3 Connect and
+# the mobile app gets no push notifications.
+for line in (string match --invert --regex '^\s*(#|$)' < $repo/zxtra/t3-connect.env)
+    set --local entry (string split --max 1 = $line)
+    set --export $entry[1] $entry[2]
+end
+
 # ── Version ──────────────────────────────────────────────────────────────────
 # The service keys its runtime folder and `activeVersion` on the version the
 # binary reports, so the fork needs its own: upstream's version plus the fork
@@ -104,6 +112,10 @@ for marker in font-size-chat katex
         echo "built web client is missing '$marker' — refusing to install"
         exit 1
     end
+end
+if not grep -qa $T3CODE_RELAY_URL $unpacked/t3
+    echo "built executable is missing the T3 Connect relay URL — refusing to install"
+    exit 1
 end
 set --local reported_version ($unpacked/t3 --version | string match -r '\d+\.\d+\.\d+\S*')
 if test "$reported_version" != "$build_version"

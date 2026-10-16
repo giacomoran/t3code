@@ -283,6 +283,21 @@ app's data directory, so threads and projects carry over. Secrets held by Electr
 changes from Apple-signed to ad-hoc — expect to re-enter those once. Local environments
 are unaffected.
 
+### T3 Connect in a local build
+
+Upstream's release workflow injects T3 Connect's public configuration at build time: the
+relay URL, the Clerk publishable key and JWT template, and the CLI's OAuth client ID. A
+local build gets none of it, so the app hides T3 Connect sign-in and `t3 connect` prints
+_"T3 Connect is unavailable in builds without public configuration"_. That matters for
+more than remote access: the mobile app's push notifications only reach a server linked
+to T3 Connect, whatever route — Tailscale included — the app otherwise uses.
+
+`zxtra/t3-connect.env` holds those values, read out of the v0.1.0 release, and both
+build-and-install scripts export them before building, then refuse to install a build
+that lacks the relay URL. None of them is a secret; every official binary carries them
+in plain text. If T3 Connect sign-in starts failing after an upstream update, compare
+them against the latest release first.
+
 ## Running the fork's server on Linux
 
 The desktop app also connects to a Linux server (epsilon) over Tailscale, and that server
@@ -322,8 +337,7 @@ the Linux CLI archive:
 
 The previous runtime stays in `~/.t3/runtime/versions`, and the script prints the
 command to roll back to it. **Don't run `t3 update` on the server**: it would replace the
-fork with an upstream release. A local build also has no T3 Connect, whose relay
-settings only release builds embed; reach the server over Tailscale instead.
+fork with an upstream release.
 
 Linux toolchain: Node and Rust from `.tool-versions` through mise (recreate it as in
 [Toolchain](#toolchain)), pnpm from `packageManager`, plus `libsecret-1-dev` and
