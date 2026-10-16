@@ -193,7 +193,7 @@ tell the builds apart.
 `zxtra/build-and-install.fish` refuses to install a bundle that is missing the fork's
 own code, or one that arrived carrying an update feed, so a botched build cannot
 quietly replace a working app. It backs the current app up to
-`/Applications/T3 Code (Alpha).app.<timestamp>.bak`; delete those once you are happy,
+`/Applications/T3 Code (Beta).app.<timestamp>.bak`; delete those once you are happy,
 they are ~400MB each.
 
 ### What tends to conflict
