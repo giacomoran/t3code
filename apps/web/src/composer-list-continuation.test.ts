@@ -42,7 +42,14 @@ describe("composer list continuation", () => {
 
   it("exits the list on an empty item", () => {
     expect(applyEdit("1. foo\n2. ", listContinuationForEnter("1. foo\n2. ", 10)!)).toBe("1. foo\n");
-    expect(applyEdit("- ", listContinuationForEnter("- ", 2)!)).toBe("");
+    expect(applyEdit("- foo\n  - ", listContinuationForEnter("- foo\n  - ", 10)!)).toBe("- foo\n");
+  });
+
+  it("keeps an empty marker that starts a list", () => {
+    expect(listContinuationForEnter("- ", 2)).toBeNull();
+    expect(listContinuationForEnter("1.", 2)).toBeNull();
+    expect(listContinuationForEnter("1. ", 3)).toBeNull();
+    expect(listContinuationForEnter("intro\n1.", 8)).toBeNull();
   });
 
   it("ignores non-list lines and carets inside the marker", () => {
