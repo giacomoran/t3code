@@ -31,9 +31,19 @@ describe("composer list continuation", () => {
 
   it("exits the list on an empty item", () => {
     expect(applyEdit("1. foo\n2. ", listContinuationForEnter("1. foo\n2. ", 10)!)).toBe("1. foo\n");
-    expect(applyEdit("- ", listContinuationForEnter("- ", 2)!)).toBe("");
-    expect(applyEdit("1)\t", listContinuationForEnter("1)\t", 3)!)).toBe("");
-    expect(applyEdit("- [ ] ", listContinuationForEnter("- [ ] ", 6)!)).toBe("");
+    expect(applyEdit("- foo\n  - ", listContinuationForEnter("- foo\n  - ", 10)!)).toBe("- foo\n");
+    expect(applyEdit("- foo\n1)\t", listContinuationForEnter("- foo\n1)\t", 9)!)).toBe("- foo\n");
+    expect(applyEdit("- foo\n- [ ] ", listContinuationForEnter("- foo\n- [ ] ", 12)!)).toBe(
+      "- foo\n",
+    );
+  });
+
+  it("keeps an empty marker that starts a list", () => {
+    expect(listContinuationForEnter("- ", 2)).toBeNull();
+    expect(listContinuationForEnter("1. ", 3)).toBeNull();
+    expect(listContinuationForEnter("1)\t", 3)).toBeNull();
+    expect(listContinuationForEnter("- [ ] ", 6)).toBeNull();
+    expect(listContinuationForEnter("intro\n1. ", 9)).toBeNull();
   });
 
   it("lifts an empty nested item one level per press before leaving the list", () => {
