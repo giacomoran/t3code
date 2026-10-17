@@ -158,7 +158,12 @@ export function listContinuationForEnter(value: string, cursor: number): Compose
   if (cursor < markerEnd) return null;
   const tokens = inlineTokenRanges(value);
   if (isInsideInlineToken(tokens, cursor)) return null;
-  if (value.slice(markerEnd, line.end).trim() === "") {
+  const isItemEmpty = value.slice(markerEnd, line.end).trim() === "";
+  // An empty item that follows another item was most likely inserted by
+  // continuation: Enter exits the list by removing the marker.
+  const isPreviousLineListItem =
+    line.start > 0 && parseListMarker(currentLine(value, line.start - 1).text) !== null;
+  if (isItemEmpty && isPreviousLineListItem) {
     return {
       start: line.start,
       end: Math.max(cursor, markerEnd),
@@ -166,6 +171,9 @@ export function listContinuationForEnter(value: string, cursor: number): Compose
       cursorAfter: line.start,
     };
   }
+  // An empty item that starts a list was typed on purpose (e.g. "1. " as a
+  // heading for what follows): keep it and fall through to a plain newline.
+  if (isItemEmpty && !isPreviousLineListItem) return null;
   const insertion = `\n${nextMarkerText(parsed.marker)}`;
   const cursorAfter = cursor + insertion.length;
   const { marker } = parsed;
