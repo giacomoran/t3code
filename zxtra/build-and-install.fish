@@ -81,7 +81,7 @@ codesign --force --deep --sign - "$built"; or exit 1
 codesign --verify --deep "$built"; or begin; echo "signature still invalid"; exit 1; end
 
 # ── Sanity-check the bundle really is the fork ───────────────────────────────
-for marker in font-size-chat katex quota_reserve
+for marker in font-size-chat modelProfiles quota_reserve
     if not grep -qa $marker "$built/Contents/Resources/app.asar"
         echo "built bundle is missing '$marker' — refusing to install"
         exit 1
@@ -120,4 +120,4 @@ echo "installed: $installed"
 echo "previous:  /Applications/$app_name.$stamp.bak  (delete when happy, ~400MB)"
 echo
 echo "Quit T3 Code fully (Cmd-Q) and relaunch."
-echo "Confirm the fork: Settings → Appearance shows 'Chat font size' and 'Math (LaTeX) in chat'."
+echo "Confirm the fork: Settings → Appearance shows 'Chat font size'."
