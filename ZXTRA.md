@@ -1,7 +1,7 @@
 # zxtra fork of T3 Code
 
 A personal fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3code) (MIT) that adds
-three things upstream does not have. Upstream is not accepting feature contributions
+a few things upstream does not have. Upstream is not accepting feature contributions
 (see `CONTRIBUTING.md`), and its README explicitly encourages forking, so these live here
 instead of in a PR.
 
@@ -18,39 +18,7 @@ Sizes the chat transcript independently of the interface font, so message prose 
 enlarged for reading without inflating every surrounding control. Code blocks inside a
 message keep following the existing _Code font size_, so they do not move with it.
 
-### 2. Math (LaTeX) in chat
-
-`Settings → Appearance → Math (LaTeX) in chat` (on by default).
-
-Renders formulas with KaTeX in all four delimiter styles:
-
-| Written | Renders as |
-| ------- | ---------- |
-| `$x$`   | inline     |
-| `\(x\)` | inline     |
-| `$$x$$` | display    |
-| `\[x\]` | display    |
-
-Single-line `$$…$$` is promoted to a centered display equation — micromark only treats
-`$$` as display math when the delimiters sit on their own lines, but assistants emit the
-single-line form constantly.
-
-LaTeX's own `\(…\)` / `\[…\]` are rewritten to the dollar forms before parsing, because
-CommonMark treats `\(` as an escape for a literal `(` — by the time the markdown is a
-syntax tree the backslashes are gone and no plugin could see them. That rewrite is
-length-preserving on purpose: task-list toggling splices files by byte offset into this
-same string, so moving a single character would break checkboxes that follow a formula.
-Code fences and inline spans are copied through untouched.
-
-KaTeX runs _after_ HTML sanitization on purpose: it emits the MathML and presentational
-spans that make up a formula, none of which survive the sanitize schema. Author HTML is
-still sanitized first, so only markup KaTeX generates from already-sanitized math text
-gets through.
-
-Turn the setting off if `$` runs in prose (shell variables, prices) start getting
-mistaken for math.
-
-### 3. Model profiles
+### 2. Model profiles
 
 A single dropdown in the composer footer, next to the model picker.
 
@@ -74,7 +42,7 @@ no traits resets to provider defaults instead of inheriting whatever was set bef
 
 Profiles are client-local (stored in client settings, not on the server), capped at 24.
 
-### 4. No cite button on selected text
+### 3. No cite button on selected text
 
 Removed. Selecting text in an assistant message popped up a floating **Cite** button
 that attached the selection to the composer as a quoted citation — an affordance that
@@ -89,6 +57,50 @@ survives rebases.
 
 `MessagesTimeline` still declares `onCiteAssistantText` so its callers upstream keep
 compiling unchanged. It is never read.
+
+### 4. Claude and Codex quota reserves
+
+`Settings → Providers → Claude → Quota reserve (%)` (and the same for Codex) reserves
+`1`–`99` percent of the five-hour subscription window; an empty field disables it.
+Once usage reaches the threshold, new turns on that provider instance are failed
+before they reach the provider, and running turns are interrupted. Both end as a
+`usage_limit` failure carrying the window's reset time, so upstream's own limit
+banner, queue hold, Continue, snooze and auto-resume at reset all apply unchanged.
+`/reserve`, Continue, or auto-resume on a reserve stop lets that one thread spend
+the reserve until the window resets; the blocked prompt is replayed by upstream's
+missed-run handoff. See [Claude](docs/user/providers-claude.md#keep-a-quota-reserve)
+and [Codex](docs/user/providers-codex.md#keep-a-quota-reserve).
+
+Inspired by [spare10](https://github.com/alesdi/spare10). The guard reads the same
+per-instance usage snapshot as Stats, which the V2 adapters already update from
+streamed rate-limit events; it never probes an agent. Missing or stale readings log
+a warning once and let work continue.
+
+The logic lives in `apps/server/src/orchestration-v2/quotaReserve/`: the shared
+state and evaluation, a provider-adapter registry decorator that tracks running
+turns and turns a reserve-triggered interrupt into the failure (ordinary stops pass
+through), a monitor that reacts to snapshot changes plus the 5s scheduler tick, and
+a `ThreadManagementService` decorator for `/reserve` and continuations.
+`QuotaReserve` is a `Context.Reference` with a no-op default so upstream tests that
+build `ProviderTurnStartService` need no changes — which also means a wiring
+mistake in `runtimeLayer.ts` disables the feature silently instead of failing to
+compile.
+
+### 5. An empty list marker that starts a list stays
+
+In the composer, Enter on an empty item continues or exits a list. Upstream removes the
+marker when the item is empty, which is right for an item continuation just inserted, but
+wrong for a `1. ` or `- ` typed on purpose at the top of a list. The marker is now removed
+only when the line above is also a list item; otherwise Enter is a plain newline. Upstream
+covers the no-space case (`1.`) since v0.1.1; this covers the rest.
+
+### Dropped: math (LaTeX) in chat
+
+The fork rendered LaTeX with KaTeX behind a three-way setting until v0.1.1, when
+upstream shipped its own (`Settings → Appearance → Render math`, off by default, saved per
+device). Upstream's reads every delimiter the fork did, keeps prices such as `$5 and $10`
+as text, and also renders on mobile, so the fork's version was removed on that rebase
+rather than kept as a second math pipeline.
 
 ## Updating from upstream
 
@@ -126,8 +138,7 @@ feature just quietly stops working. So the check verifies those assumptions by n
 3. **Path collisions** — upstream adding a file the fork also adds.
 4. **Load-bearing assumptions** — every upstream symbol the fork depends on, checked
    against the upstream tree. A miss names the symbol, the file, and what it holds up.
-5. **Dependency drift** — the markdown packages the fork leans on.
-6. **Did upstream build it themselves?** — a hit means the fork's patch may now be
+5. **Did upstream build it themselves?** — a hit means the fork's patch may now be
    redundant, and carrying it forward could conflict in behaviour rather than in text.
 
 Exit codes: `0` proceed, `2` stop and read section 4 or 3 first.
@@ -136,15 +147,15 @@ Exit codes: `0` proceed, `2` stop and read section 4 or 3 first.
 exist — it cannot see a field that kept its name but changed meaning, or a turn state
 that gained a new value. Sections 1 and 2 are there to be read by a human or an agent,
 not just skimmed for the verdict. After any non-trivial rebase, run the suites and
-actually exercise the four features before trusting the build.
+actually exercise the fork's features before trusting the build.
 
 Run the test suites too if the rebase touched anything the fork edits — see
 [Checks](#building-and-running).
 
 Then quit T3 Code fully (Cmd-Q) and relaunch.
 
-**Confirm you are on the fork:** `Settings → Appearance` shows **Chat font size** and
-**Math (LaTeX) in chat**. Neither exists upstream. The version string still reads
+**Confirm you are on the fork:** `Settings → Appearance` shows **Chat font size**, which
+does not exist upstream. The version string still reads
 whatever upstream's does — the fork is not separately versioned, so do not use it to
 tell the builds apart.
 
@@ -159,27 +170,29 @@ they are ~400MB each.
 The changes are deliberately small and concentrated. Most of the new code lives in
 files upstream does not have, which never conflict:
 
-- `apps/web/src/markdown-math-display.ts`
-- `apps/web/src/markdown-math-delimiters.ts`
 - `apps/web/src/modelProfiles.ts`
 - `apps/web/src/components/chat/ModelProfilesBar.tsx`
+- `apps/server/src/orchestration-v2/quotaReserve/*`
 
 Only these upstream files are modified, each in one or two spots:
 
-| File                                                        | Why                                    |
-| ----------------------------------------------------------- | -------------------------------------- |
-| `packages/contracts/src/settings.ts`                        | new settings + `ModelProfile` schema   |
-| `apps/web/src/appearanceFonts.ts`                           | `--font-size-chat` variable            |
-| `apps/web/src/routes/__root.tsx`                            | applies the chat size                  |
-| `apps/web/src/components/ChatMarkdown.tsx`                  | chat size + math plugins               |
-| `apps/web/src/components/settings/SettingsPanels.tsx`       | Appearance rows                        |
-| `apps/web/src/components/settings/SettingsFontPreviews.tsx` | chat font preview                      |
-| `apps/web/src/components/settings/settingsSearch.ts`        | makes the rows searchable              |
-| `apps/web/src/components/chat/ChatComposer.tsx`             | renders the profiles dropdown          |
-| `apps/web/src/components/ChatView.tsx`                      | applies a profile                      |
-| `apps/web/src/main.tsx`                                     | KaTeX stylesheet                       |
-| `apps/web/package.json`                                     | `katex`, `remark-math`, `rehype-katex` |
-| `apps/web/src/components/chat/MessagesTimeline.tsx`         | drops the cite-selection button        |
+| File                                                           | Why                                  |
+| -------------------------------------------------------------- | ------------------------------------ |
+| `packages/contracts/src/settings.ts`                           | new settings + `ModelProfile` schema |
+| `apps/web/src/appearanceFonts.ts`                              | `--font-size-chat` variable          |
+| `apps/web/src/routes/__root.tsx`                               | applies the chat size                |
+| `apps/web/src/components/ChatMarkdown.tsx`                     | applies the chat size                |
+| `apps/web/src/components/settings/SettingsPanels.tsx`          | Appearance rows                      |
+| `apps/web/src/components/settings/SettingsFontPreviews.tsx`    | chat font preview                    |
+| `apps/web/src/components/settings/settingsSearch.ts`           | makes the rows searchable            |
+| `apps/web/src/components/chat/ChatComposer.tsx`                | renders the profiles dropdown        |
+| `apps/web/src/components/ChatView.tsx`                         | applies a profile                    |
+| `apps/web/src/components/chat/MessagesTimeline.tsx`            | drops the cite-selection button      |
+| `apps/web/src/composer-list-continuation.ts`                   | keeps a list-starting empty marker   |
+| `apps/server/src/orchestration-v2/ProviderTurnStartService.ts` | quota gate before a turn starts      |
+| `apps/server/src/orchestration-v2/runtimeLayer.ts`             | wires the quota decorators           |
+| `apps/server/src/provider/ClaudeProvider.ts`                   | `/reserve` slash command             |
+| `apps/server/src/provider/CodexProvider.ts`                    | `/reserve` slash command             |
 
 If a rebase conflicts, it will almost always be one of the small hunks in the table
 above.
