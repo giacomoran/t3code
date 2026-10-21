@@ -93,14 +93,11 @@ for row in \
     "settings:: client schema the new settings extend          :: packages/contracts/src/settings.ts :: ClientSettingsSchema" \
     "settings:: patch schema (a field missing here is dropped)  :: packages/contracts/src/settings.ts :: ClientSettingsPatch" \
     "settings:: defaults derived from the schema               :: packages/contracts/src/settings.ts :: DEFAULT_UNIFIED_SETTINGS" \
-    "math   :: remark plugin list the math plugins extend      :: apps/web/src/components/ChatMarkdown.tsx :: CHAT_MARKDOWN_REMARK_PLUGINS" \
-    "math   :: rehype plugin list KaTeX is appended to         :: apps/web/src/components/ChatMarkdown.tsx :: CHAT_MARKDOWN_REHYPE_PLUGINS" \
-    "math   :: sanitize schema KaTeX must run after            :: packages/shared/src/markdownPipeline.ts :: CHAT_MARKDOWN_SANITIZE_SCHEMA" \
-    "math   :: task offsets: why the delimiter rewrite keeps length :: apps/web/src/components/files/filePreviewMode.ts :: setMarkdownTaskChecked" \
     "profile:: applying a profile as a complete snapshot       :: apps/web/src/composerDraftStore.ts :: replaceOptions" \
     "profile:: model-change guards a profile routes through    :: apps/web/src/components/ChatView.tsx :: onProviderModelSelect" \
     "profile:: trait payload stored in a profile               :: packages/contracts/src/model.ts :: ProviderOptionSelections" \
-    "profile:: client-settings writer the composer uses        :: apps/web/src/hooks/useSettings.ts :: useUpdateClientSettings" \
+    "profile:: client-settings writer the composer uses        :: apps/web/src/hooks/useSettings.ts :: updateClientSettings" \
+    "list   :: marker parser the list-start check reuses       :: apps/web/src/composer-list-continuation.ts :: parseListMarker" \
     "quota  :: pre-start failure path the gate reuses          :: apps/server/src/orchestration-v2/ProviderTurnStartService.ts :: settleRunBeforeStart" \
     "quota  :: blocked prompt replayed on the next start       :: apps/server/src/orchestration-v2/ProviderTurnStartService.ts :: missedRuns" \
     "quota  :: registry the turn tracker decorates             :: apps/server/src/orchestration-v2/ProviderAdapterRegistry.ts :: layerFromProviderInstanceRegistry" \
@@ -125,23 +122,10 @@ for row in \
 end
 
 echo
-echo "──────── 5. dependency drift the fork leans on ────────"
-for dep in react-markdown rehype-sanitize rehype-raw remark-gfm
-    set --local ours (git show HEAD:apps/web/package.json | string match -r "\"$dep\": \"[^\"]+\"")
-    set --local theirs (git show $ref:apps/web/package.json | string match -r "\"$dep\": \"[^\"]+\"")
-    if test "$ours" != "$theirs"
-        echo "  CHANGED $dep: ours $ours / upstream $theirs"
-    else
-        echo "  same    $dep $ours"
-    end
-end
-
-echo
-echo "──────── 6. did upstream build any of this themselves? ────────"
+echo "──────── 5. did upstream build any of this themselves? ────────"
 echo "a hit means the fork's patch may now be redundant, or may collide in behaviour."
 for row in \
     "chat font size :: fontSizeChat" \
-    "math rendering :: rehype-katex" \
     "model profiles :: modelProfiles"
     set --local parts (string split "::" -- $row)
     set --local label (string trim -- $parts[1])

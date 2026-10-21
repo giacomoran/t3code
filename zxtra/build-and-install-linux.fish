@@ -107,7 +107,7 @@ for marker in quota_reserve
         exit 1
     end
 end
-for marker in font-size-chat katex
+for marker in font-size-chat modelProfiles
     if not grep -rqa $marker $unpacked/client
         echo "built web client is missing '$marker' — refusing to install"
         exit 1
