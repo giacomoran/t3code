@@ -1,6 +1,6 @@
 import { type ModelProfile, MAX_MODEL_PROFILES } from "@t3tools/contracts";
 import { BookmarkPlusIcon, CheckIcon, Trash2Icon } from "lucide-react";
-import { memo, useMemo, useState } from "react";
+import { memo, useState } from "react";
 
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
@@ -62,14 +62,9 @@ export const ModelProfilesBar = memo(function ModelProfilesBar({
   const [isOpen, setIsOpen] = useState(false);
   const [draftName, setDraftName] = useState("");
 
-  const suggestion = useMemo(
-    () => suggestedModelProfileName(selection, traitLabelsForSelection(selection)),
-    [selection],
-  );
-  const activeProfile = useMemo(
-    () => profiles.find((profile) => isModelProfileActive(profile, selection)) ?? null,
-    [profiles, selection],
-  );
+  const suggestion = suggestedModelProfileName(selection, traitLabelsForSelection(selection));
+  const activeProfile =
+    profiles.find((profile) => isModelProfileActive(profile, selection)) ?? null;
   const isFull = isModelProfileListFull(profiles);
   // An empty field saves under the suggested name, so the common case is
   // "open, press Save" without typing.
@@ -139,7 +134,7 @@ export const ModelProfilesBar = memo(function ModelProfilesBar({
                       />
                       <span className="min-w-0 flex-1 truncate">{profile.name}</span>
                       {summary === null ? null : (
-                        <span className="min-w-0 shrink truncate text-[11px] text-muted-foreground">
+                        <span className="min-w-0 shrink truncate text-2xs text-muted-foreground">
                           {summary}
                         </span>
                       )}
@@ -192,7 +187,7 @@ export const ModelProfilesBar = memo(function ModelProfilesBar({
               </Button>
             </div>
             {isFull ? (
-              <p className="px-1.5 text-[11px] text-muted-foreground">
+              <p className="px-1.5 text-2xs text-muted-foreground">
                 {MAX_MODEL_PROFILES} profiles is the limit — delete one to add another.
               </p>
             ) : null}
