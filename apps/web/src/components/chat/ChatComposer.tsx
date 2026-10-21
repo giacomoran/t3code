@@ -1077,7 +1077,7 @@ import {
 import { type AppModelOption, getAppModelOptionsForInstance } from "../../modelSelection";
 import type { UnifiedSettings } from "@t3tools/contracts/settings";
 import type { ModelProfile } from "@t3tools/contracts";
-import { useUpdateClientSettings } from "../../hooks/useSettings";
+import { updateClientSettings } from "../../hooks/useSettings";
 import { addModelProfile, createModelProfile, removeModelProfile } from "../../modelProfiles";
 import {
   isVideoAttachment,
@@ -2899,33 +2899,23 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   // Model profiles are client-scoped, so they persist straight to client
   // settings; only applying one needs the view's thread routing.
-  const updateClientSettings = useUpdateClientSettings();
   const modelProfiles = settings.modelProfiles;
-  const modelProfileSelection = useMemo(
-    () => ({
-      instanceId: selectedInstanceId,
-      model: selectedModel,
-      options: composerModelOptions?.[selectedInstanceId],
-    }),
-    [composerModelOptions, selectedInstanceId, selectedModel],
-  );
-  const handleSaveModelProfile = useCallback(
-    (name: string) => {
-      updateClientSettings({
-        modelProfiles: addModelProfile(
-          modelProfiles,
-          createModelProfile(name, modelProfileSelection),
-        ),
-      });
-    },
-    [modelProfileSelection, modelProfiles, updateClientSettings],
-  );
-  const handleDeleteModelProfile = useCallback(
-    (id: string) => {
-      updateClientSettings({ modelProfiles: removeModelProfile(modelProfiles, id) });
-    },
-    [modelProfiles, updateClientSettings],
-  );
+  const modelProfileSelection = {
+    instanceId: selectedInstanceId,
+    model: selectedModel,
+    options: composerModelOptions?.[selectedInstanceId],
+  };
+  const handleSaveModelProfile = (name: string) => {
+    updateClientSettings({
+      modelProfiles: addModelProfile(
+        modelProfiles,
+        createModelProfile(name, modelProfileSelection),
+      ),
+    });
+  };
+  const handleDeleteModelProfile = (id: string) => {
+    updateClientSettings({ modelProfiles: removeModelProfile(modelProfiles, id) });
+  };
 
   const providerTraitsMenuContent = renderProviderTraitsMenuContent({
     provider: selectedProvider,
