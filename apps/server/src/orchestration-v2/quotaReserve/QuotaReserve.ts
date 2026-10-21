@@ -21,8 +21,8 @@ import * as Schema from "effect/Schema";
 import * as ProviderInstanceRegistry from "../../provider/ProviderInstanceRegistry.ts";
 import { deriveProviderInstanceConfigMap } from "../../provider/ProviderInstanceRegistryHydration.ts";
 import * as ServerSettings from "../../serverSettings.ts";
-import type { ProviderAdapterV2Error } from "../ProviderAdapter.ts";
-import { makeProviderFailure } from "../ProviderFailure.ts";
+import type { ProviderAdapterV2Error } from "@t3tools/provider-core/server/ProviderAdapter";
+import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 
 const CLAUDE_DRIVER = "claudeAgent";
 const CODEX_DRIVER = "codex";

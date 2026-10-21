@@ -25,14 +25,14 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
 import type {
+  ProviderAdapterV2,
   ProviderAdapterV2Event,
   ProviderAdapterV2SessionRuntime,
-  ProviderAdapterV2Shape,
   ProviderAdapterV2TurnInput,
-} from "../ProviderAdapter.ts";
+} from "@t3tools/provider-core/server/ProviderAdapter";
 import { CodexProviderCapabilitiesV2 } from "../Adapters/CodexAdapterV2.ts";
 import * as ProviderAdapterRegistry from "../ProviderAdapterRegistry.ts";
-import { makeProviderFailure } from "../ProviderFailure.ts";
+import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import * as QuotaReserve from "./QuotaReserve.ts";
 import * as QuotaReserveAdapterRegistry from "./QuotaReserveAdapterRegistry.ts";
 
@@ -315,7 +315,7 @@ const runRewriteScenario = Effect.fn("QuotaReserveAdapterRegistryTest.runRewrite
       rollbackThread: () => Effect.die("unused rollbackThread"),
       forkThread: () => Effect.die("unused forkThread"),
     };
-    const adapter: ProviderAdapterV2Shape = {
+    const adapter: ProviderAdapterV2["Service"] = {
       instanceId,
       driver,
       getCapabilities: () => Effect.die("unused getCapabilities"),

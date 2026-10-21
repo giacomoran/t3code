@@ -8,7 +8,7 @@ import type {
   ProviderAdapterV2Event,
   ProviderAdapterV2SessionRuntime,
   ProviderAdapterV2TurnInput,
-} from "../ProviderAdapter.ts";
+} from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ProviderAdapterRegistry from "../ProviderAdapterRegistry.ts";
 import * as QuotaReserve from "./QuotaReserve.ts";
 import { startingTurnKey } from "./QuotaReserve.ts";
