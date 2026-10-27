@@ -78,9 +78,15 @@ cp $CARGO_TARGET_DIR/release/t3-resource-monitor $stage/resource-monitor/linux-x
 
 # Single executable. vp packs it with the Node that runs it, and that Node must
 # be 25.7+ (upstream's CI gets one through its global vp instead). Run this step
-# on the exact version upstream bundles, SEA_NODE_VERSION in
-# apps/server/vite.config.ts, installed through mise.
-set --local sea_node_version (string match -r 'SEA_NODE_VERSION = "([^"]+)"' < apps/server/vite.config.ts)[2]
+# on the exact version upstream bundles, `engines.node` in the root
+# package.json (apps/server/vite.config.ts refuses any other), installed
+# through mise.
+set --local sea_node_version (string match -r '"node": "([^"]+)"' < package.json)[2]
+if test -z "$sea_node_version"
+    echo "no engines.node in package.json — refusing to guess the executable's Node"
+    restore_release_manifests
+    exit 1
+end
 echo "==> building the single executable (Node $sea_node_version)"
 mise install --quiet node@$sea_node_version; or begin; restore_release_manifests; exit 1; end
 mise exec node@$sea_node_version -- node apps/server/scripts/cli.ts build-exe; or begin; restore_release_manifests; exit 1; end
