@@ -190,7 +190,7 @@ export const layer: Layer.Layer<
     const registry = yield* ProviderAdapterRegistry.ProviderAdapterRegistryV2;
     const quotaReserve = yield* QuotaReserve.QuotaReserve;
     return ProviderAdapterRegistry.ProviderAdapterRegistryV2.of({
-      get: (instanceId) =>
+      get: Effect.fn("ProviderAdapterRegistry.ProviderAdapterRegistryV2.get")((instanceId) =>
         registry.get(instanceId).pipe(
           Effect.map((adapter) => ({
             ...adapter,
@@ -200,6 +200,7 @@ export const layer: Layer.Layer<
                 .pipe(Effect.flatMap((runtime) => decorateRuntime(runtime, quotaReserve))),
           })),
         ),
+      ),
       list: registry.list,
       ...(registry.getMetadata === undefined ? {} : { getMetadata: registry.getMetadata }),
     });

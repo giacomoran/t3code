@@ -165,7 +165,9 @@ const noop: QuotaReserveShape = {
   activateTurn: () => Effect.void,
   observeTurnItem: () => Effect.void,
   activeTurns: () => Effect.succeed([]),
+  // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
   flagReserveStop: () => Effect.succeed(undefined),
+  // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
   finishTurn: () => Effect.succeed(undefined),
 };
 
@@ -332,24 +334,27 @@ export const layer = Layer.effect(
     return QuotaReserve.of({
       evaluate,
       authorize,
-      isEnabled: (instanceId) =>
+      isEnabled: Effect.fn("QuotaReserve.isEnabled")((instanceId) =>
         readReserve(instanceId).pipe(
           Effect.map((reserve) => reserve !== null),
           Effect.catchCause((cause) =>
             Cause.hasInterruptsOnly(cause) ? Effect.interrupt : Effect.succeed(false),
           ),
         ),
-      registerStartingTurn: (turn) =>
+      ),
+      registerStartingTurn: Effect.fn("QuotaReserve.registerStartingTurn")((turn) =>
         Ref.update(startingTurns, (current) =>
           new Map(current).set(startingTurnKey(turn.instanceId, turn.attemptId), turn),
         ),
-      clearStartingTurn: (instanceId, attemptId) =>
+      ),
+      clearStartingTurn: Effect.fn("QuotaReserve.clearStartingTurn")((instanceId, attemptId) =>
         Ref.update(startingTurns, (current) => {
           const next = new Map(current);
           next.delete(startingTurnKey(instanceId, attemptId));
           return next;
         }),
-      activateTurn: (input) =>
+      ),
+      activateTurn: Effect.fn("QuotaReserve.activateTurn")((input) =>
         Ref.modify(startingTurns, (current) => {
           const key = startingTurnKey(input.instanceId, input.attemptId);
           const turn = current.get(key);
@@ -376,14 +381,17 @@ export const layer = Layer.effect(
             });
           }),
         ),
-      observeTurnItem: (instanceId, providerTurnId, ordinal) =>
-        Ref.update(activeTurns, (current) => {
-          const trackingId = activeTurnKey(instanceId, providerTurnId);
-          const turn = current.get(trackingId);
-          if (turn === undefined || turn.latestItemOrdinal >= ordinal) return current;
-          return new Map(current).set(trackingId, { ...turn, latestItemOrdinal: ordinal });
-        }),
-      activeTurns: (instanceId) =>
+      ),
+      observeTurnItem: Effect.fn("QuotaReserve.observeTurnItem")(
+        (instanceId, providerTurnId, ordinal) =>
+          Ref.update(activeTurns, (current) => {
+            const trackingId = activeTurnKey(instanceId, providerTurnId);
+            const turn = current.get(trackingId);
+            if (turn === undefined || turn.latestItemOrdinal >= ordinal) return current;
+            return new Map(current).set(trackingId, { ...turn, latestItemOrdinal: ordinal });
+          }),
+      ),
+      activeTurns: Effect.fn("QuotaReserve.activeTurns")((instanceId) =>
         Ref.get(activeTurns).pipe(
           Effect.map((current) =>
             [...current.values()]
@@ -396,7 +404,8 @@ export const layer = Layer.effect(
               })),
           ),
         ),
-      flagReserveStop: (trackingId, failure) =>
+      ),
+      flagReserveStop: Effect.fn("QuotaReserve.flagReserveStop")((trackingId, failure) =>
         Ref.modify(activeTurns, (current) => {
           const turn = current.get(trackingId);
           if (turn === undefined || turn.reserveFailure !== undefined) {
@@ -407,7 +416,8 @@ export const layer = Layer.effect(
             new Map(current).set(trackingId, { ...turn, reserveFailure: failure }),
           ] as const;
         }),
-      finishTurn: (instanceId, providerTurnId) =>
+      ),
+      finishTurn: Effect.fn("QuotaReserve.finishTurn")((instanceId, providerTurnId) =>
         Ref.modify(activeTurns, (current) => {
           const trackingId = activeTurnKey(instanceId, providerTurnId);
           const turn = current.get(trackingId);
@@ -422,6 +432,7 @@ export const layer = Layer.effect(
             next,
           ] as const;
         }),
+      ),
     });
   }),
 );

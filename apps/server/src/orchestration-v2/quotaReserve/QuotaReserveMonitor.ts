@@ -22,7 +22,8 @@ const makeSweep = Effect.gen(function* () {
           Effect.flatMap((decision) =>
             decision.type === "block"
               ? quotaReserve.flagReserveStop(turn.trackingId, decision.failure)
-              : Effect.succeed(undefined),
+              : // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
+                Effect.succeed(undefined),
           ),
           Effect.flatMap((interrupt) =>
             interrupt === undefined
