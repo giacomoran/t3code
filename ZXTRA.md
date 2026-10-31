@@ -136,7 +136,7 @@ and the servers it connects to must come from the same fork.
 ### Updating on each stable release
 
 On epsilon, the `t3code-fork-watch` timer runs `zxtra/watch-stable-release.fish` every
-hour. It asks GitHub for upstream's latest stable release (drafts, nightlies and previews
+day at 4:00; a run missed while epsilon was off happens at its next boot. It asks GitHub for upstream's latest stable release (drafts, nightlies and previews
 don't count), and when `origin/zxtra` does not contain that tag it starts a thread on
 epsilon's T3 Code server, in the `t3code` project, with the instructions in
 `zxtra/update-thread-prompt.md`. When nothing is new it starts no agent.
