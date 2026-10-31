@@ -333,7 +333,9 @@ pnpm install
 the Linux CLI archive:
 
 1. Stamps the version `<upstream version>-zxtra.g<commit>` into the release manifests, and
-   restores them when the build ends. The service keys its runtime folder on the version
+   restores them when the build ends. Like upstream's workflow, it takes the upstream
+   version from the newest release tag under `HEAD`, not from `package.json`, which lags
+   the tag (`v0.1.6` ships `0.1.5`), so the checkout needs upstream's tags. The service keys its runtime folder on the version
    the binary reports, so the fork needs a version of its own.
 2. Builds the web client and server bundle, the Rust resource monitor, and the single
    executable. The executable step runs on Node `SEA_NODE_VERSION` (from
@@ -350,8 +352,9 @@ command to roll back to it. **Don't run `t3 update` on the server**: it would re
 fork with an upstream release.
 
 Linux toolchain: Node and Rust from `.tool-versions` through mise (recreate it as in
-[Toolchain](#toolchain)), pnpm from `packageManager`, plus `libsecret-1-dev` and
-`pkg-config` from apt.
+[Toolchain](#toolchain)), pnpm from `packageManager`, plus `libsecret-1-dev`,
+`pkg-config` and `patchelf` from apt. Without sudo, `uv tool install patchelf` works too:
+since v0.1.6 the CLI archive bundles libatomic and patches `t3`'s rpath with it.
 
 ## Building and running
 
