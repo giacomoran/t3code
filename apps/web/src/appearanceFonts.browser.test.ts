@@ -36,6 +36,7 @@ describe("applyAppearanceFontVariables", () => {
       sizeInterface: 20,
       sizePrompt: 14,
       sizeCode: 13,
+      sizeChat: 14,
       smoothing: true,
     };
     try {
