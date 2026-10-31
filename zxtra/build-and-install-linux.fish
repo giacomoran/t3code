@@ -15,10 +15,10 @@ cd $repo; or exit 1
 # ── Toolchain ────────────────────────────────────────────────────────────────
 # Node, Rust and pnpm come from .tool-versions and packageManager via mise. Rust
 # must be >= 1.95: the native resource monitor depends on a sysinfo that refuses
-# older compilers.
-for tool in mise node pnpm cargo rustc
+# older compilers. The CLI archive bundles libatomic and runs patchelf on t3.
+for tool in mise node pnpm cargo rustc patchelf
     if not type -q $tool
-        echo "missing toolchain: $tool (see ZXTRA.md → Toolchain)"
+        echo "missing toolchain: $tool (see ZXTRA.md → Running the fork's server on Linux)"
         exit 1
     end
 end
@@ -49,7 +49,14 @@ if test -n "$(git status --porcelain --untracked-files=no)"
     git status --short
     exit 1
 end
-set --local base_version (node -p 'require("./apps/server/package.json").version')
+# Upstream's release workflow takes the version from the release tag, not from
+# package.json, which lags it: v0.1.6 still says 0.1.5.
+set --local base_tag (git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' --exclude '*-*' HEAD)
+if not string match --quiet --regex '^v\d+\.\d+\.\d+$' -- "$base_tag"
+    echo "no upstream release tag vX.Y.Z under HEAD; run `git fetch upstream --tags`"
+    exit 1
+end
+set --local base_version (string sub --start 2 -- $base_tag)
 set --local build_version "$base_version-zxtra.g"(git rev-parse --short HEAD)
 set --local release_manifests apps/server/package.json apps/desktop/package.json apps/web/package.json packages/contracts/package.json
 echo "==> building t3 $build_version"
