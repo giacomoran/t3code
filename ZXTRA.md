@@ -108,10 +108,17 @@ This fork is not auto-updated — that is the trade for it not silently revertin
 upstream release (see [Why there is no auto-update](#why-there-is-no-auto-update)).
 Updating is: rebase, rebuild, reinstall.
 
+On epsilon a timer does this by itself for each stable release, in a thread you
+answer when it needs a decision — see
+[Updating on each stable release](#updating-on-each-stable-release). By hand, with the
+release's tag (here `v0.1.6`):
+
 ```fish
 cd ~/Projects/zxtra/t3code
-./zxtra/check-upstream.fish      # pre-flight: read this before deciding
-git rebase upstream/main zxtra
+git fetch upstream --tags
+ZXTRA_UPSTREAM_REF=v0.1.6 ./zxtra/check-upstream.fish   # pre-flight: read this before deciding
+git branch zxtra-pre-v0.1.6 zxtra                        # backup
+git rebase v0.1.6 zxtra
 pnpm install                     # only when the lockfile moved
 pnpm tc                          # sanity-check the rebase before building
 ./zxtra/build-and-install.fish   # build, sign, back up, install
@@ -120,6 +127,38 @@ pnpm tc                          # sanity-check the rebase before building
 Then rebuild every Linux server that runs the fork — see
 [Running the fork's server on Linux](#running-the-forks-server-on-linux). The desktop app
 and the servers it connects to must come from the same fork.
+
+### Updating on each stable release
+
+On epsilon, the `t3code-fork-watch` timer runs `zxtra/watch-stable-release.fish` every
+hour. It asks GitHub for upstream's latest stable release (drafts, nightlies and previews
+don't count), and when `origin/zxtra` does not contain that tag it starts a thread on
+epsilon's T3 Code server, in the `t3code` project, with the instructions in
+`zxtra/update-thread-prompt.md`. When nothing is new it starts no agent.
+
+The thread rebases `zxtra` onto the tag, fixes what the rebase broke, force-pushes, and
+installs on epsilon. It asks in the thread only for real decisions, such as an upstream
+feature that overlaps one of the fork's, so answer it whenever you see it. The install
+restarts the server the thread runs on, so `zxtra/install-linux-detached.fish` runs
+it in a transient systemd unit and reports the outcome to the thread as its next turn.
+Tiramisu may be off, so the thread ends with a message to paste to an agent there, which
+rebuilds the desktop app.
+
+One release at a time: the script records each thread's id in
+`~/.local/state/t3code-fork-update/<tag>`, and starts no new thread while one whose tag
+`zxtra` does not contain yet is open. To start one again, for example after deleting
+the thread, delete its file. Logs: `journalctl --user -u t3code-fork-watch`.
+
+Setting it up on a new machine, once the fork's checkout is at `~/Projects/t3code`:
+
+```fish
+t3 project add ~/Projects/t3code
+mkdir -p ~/.config/systemd/user
+cp ~/Projects/t3code/zxtra/systemd/t3code-fork-watch.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now t3code-fork-watch.timer
+loginctl enable-linger $USER   # keeps the timer running while you are logged out
+```
 
 ### The pre-flight check
 

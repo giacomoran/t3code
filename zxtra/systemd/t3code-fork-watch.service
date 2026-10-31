@@ -1,0 +1,14 @@
+# Runs zxtra/watch-stable-release.fish, which starts the fork's update thread
+# when upstream publishes a stable release. Installed by ZXTRA.md → Updating
+# on each stable release.
+[Unit]
+Description=Start a T3 Code thread to update the fork on a new stable release
+Wants=network-online.target
+After=network-online.target t3code.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Projects/t3code
+# t3 lives in ~/.local/bin; git, gh and fish in /usr/bin.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/fish %h/Projects/t3code/zxtra/watch-stable-release.fish
