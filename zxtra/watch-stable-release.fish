@@ -1,8 +1,9 @@
 #!/usr/bin/env fish
 #
 # Start a T3 Code thread that updates this fork each time upstream publishes a
-# new stable release. The t3code-fork-watch timer runs it hourly on epsilon
-# (see ZXTRA.md → Updating on each stable release). When nothing is new it costs
+# new stable release. The t3code-fork-watch timer runs it every day at 4:00 on
+# epsilon, or at its next boot when epsilon was off at 4:00 (see ZXTRA.md →
+# Updating on each stable release). When nothing is new it costs
 # one GitHub API call and two fetches, and starts no agent.
 #
 # The thread runs in this checkout with the instructions in
