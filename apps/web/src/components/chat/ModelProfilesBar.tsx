@@ -6,7 +6,7 @@ import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
-import { ComposerControl, ComposerControlChevron } from "./ComposerControl";
+import { ComposerControl } from "./ComposerControl";
 import {
   isModelProfileActive,
   isModelProfileListFull,
@@ -37,12 +37,8 @@ function modelProfileSummary(profile: ModelProfile): string | null {
 }
 
 /**
- * One-click model setups, as a single composer control.
- *
- * The trigger names the profile the composer currently sits on, and the popup
- * both applies profiles and manages the list. Applying restores a provider
- * instance, model and every trait at once, so a combination like "Luna + low
- * reasoning + fast" is one press instead of three menus.
+ * One-click model setups. The trigger names the profile the composer sits on;
+ * the popup applies profiles and manages the list.
  */
 export const ModelProfilesBar = memo(function ModelProfilesBar({
   profiles,
@@ -99,17 +95,14 @@ export const ModelProfilesBar = memo(function ModelProfilesBar({
                 <span>Save profile</span>
               </>
             ) : (
-              <>
-                <span className={cn("max-w-40 truncate", activeProfile && "text-foreground")}>
-                  {activeProfile?.name ?? "Profiles"}
-                </span>
-                <ComposerControlChevron />
-              </>
+              <span className={cn("max-w-40 truncate", activeProfile && "text-foreground")}>
+                {activeProfile?.name ?? "Profiles"}
+              </span>
             )}
           </ComposerControl>
         }
       />
-      <PopoverPopup align="start" className="w-72 p-1.5">
+      <PopoverPopup align="start" className="w-72" padding="compact">
         <div className="space-y-1.5">
           {profiles.length > 0 ? (
             <ul className="space-y-0.5">
@@ -162,7 +155,8 @@ export const ModelProfilesBar = memo(function ModelProfilesBar({
             <div className="flex items-center gap-1.5">
               <Input
                 autoFocus
-                className="h-7 min-w-0 flex-1 text-xs"
+                size="compact"
+                className="min-w-0 flex-1"
                 maxLength={40}
                 placeholder={suggestion}
                 spellCheck={false}
@@ -188,7 +182,7 @@ export const ModelProfilesBar = memo(function ModelProfilesBar({
             </div>
             {isFull ? (
               <p className="px-1.5 text-2xs text-muted-foreground">
-                {MAX_MODEL_PROFILES} profiles is the limit — delete one to add another.
+                {MAX_MODEL_PROFILES} profiles is the limit. Delete one to add another.
               </p>
             ) : null}
           </div>
