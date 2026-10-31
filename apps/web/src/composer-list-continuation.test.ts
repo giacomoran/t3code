@@ -31,7 +31,7 @@ describe("composer list continuation", () => {
 
   it("exits the list on an empty item", () => {
     expect(applyEdit("1. foo\n2. ", listContinuationForEnter("1. foo\n2. ", 10)!)).toBe("1. foo\n");
-    expect(applyEdit("- foo\n  - ", listContinuationForEnter("- foo\n  - ", 10)!)).toBe("- foo\n");
+    expect(applyEdit("- foo\n- ", listContinuationForEnter("- foo\n- ", 8)!)).toBe("- foo\n");
     expect(applyEdit("- foo\n1)\t", listContinuationForEnter("- foo\n1)\t", 9)!)).toBe("- foo\n");
     expect(applyEdit("- foo\n- [ ] ", listContinuationForEnter("- foo\n- [ ] ", 12)!)).toBe(
       "- foo\n",
