@@ -18,6 +18,9 @@ Sizes the chat transcript independently of the interface font, so message prose 
 enlarged for reading without inflating every surrounding control. Code blocks inside a
 message keep following the existing _Code font size_, so they do not move with it.
 
+The row shows in both of upstream's typography layouts, with and without _Separate
+fonts_, and the size applies in both; that toggle gates only the prompt font.
+
 ### 2. Model profiles
 
 A single dropdown in the composer footer, next to the model picker.
@@ -48,12 +51,14 @@ Removed. Selecting text in an assistant message popped up a floating **Cite** bu
 that attached the selection to the composer as a quoted citation — an affordance that
 appears on every selection, including the ones made to copy a line or just to read.
 
-Only the button is gone. The rest of upstream's citation machinery — the composer
+Only the button is gone: its mount point in `MessagesTimeline` and its component,
+`AssistantSelectionToolbar.tsx`, which nothing else imports (knip fails the pre-commit
+hook on an unused file). The rest of upstream's citation machinery — the composer
 chip, the citation node, the anchors that mark assistant text as citable — is left
 untouched and simply has nothing left to trigger it. Removing that too would mean
 editing the composer, the prompt editor, and the timeline plumbing, which is a large
-fork surface for no visible gain; deleting the one mount point is a single hunk that
-survives rebases.
+fork surface for no visible gain. If upstream edits the deleted component, the rebase
+stops on a modify/delete conflict: keep it deleted.
 
 `MessagesTimeline` still declares `onCiteAssistantText` so its callers upstream keep
 compiling unchanged. It is never read.
@@ -227,6 +232,7 @@ Only these upstream files are modified, each in one or two spots:
 | `apps/web/src/components/chat/ChatComposer.tsx`                | renders the profiles dropdown        |
 | `apps/web/src/components/ChatView.tsx`                         | applies a profile                    |
 | `apps/web/src/components/chat/MessagesTimeline.tsx`            | drops the cite-selection button      |
+| `apps/web/src/components/chat/AssistantSelectionToolbar.tsx`   | deleted with the cite button         |
 | `apps/web/src/composer-list-continuation.ts`                   | keeps a list-starting empty marker   |
 | `apps/server/src/orchestration-v2/ProviderTurnStartService.ts` | quota gate before a turn starts      |
 | `apps/server/src/orchestration-v2/runtimeLayer.ts`             | wires the quota decorators           |
