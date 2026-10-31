@@ -32,13 +32,23 @@ meanwhile.
    `packages/contracts/src/environment.ts` between `zxtra-pre-{{tag}}` and
    `zxtra`. If it changed, the desktop app on tiramisu cannot reach epsilon
    from the moment one of them is updated until the other one is: post the
-   handoff (step 8) first, and install here only once I say so.
+   handoff (step 9) first, and install here only once I say so.
 7. Install on epsilon: `./zxtra/install-linux-detached.fish <your thread id>`.
    It restarts this server at the end, so it runs in the background, and you
    get a message with its outcome as your next turn: end your turn once it
    has started. Then check the log, `t3 --version` and the service. If the
    install failed, fix the cause and run it again.
-8. Report, then end: what upstream changed that touches the fork, each
+8. Read the notes of every stable release after the fork's old base (the
+   newest `vX.Y.Z` tag under `zxtra-pre-{{tag}}`) up to {{tag}}: list them
+   with `gh release list -R pingdotgg/t3code --exclude-drafts --exclude-pre-releases`,
+   then `gh release view <tag> -R pingdotgg/t3code` for each. Read its
+   Highlights and Fixes; skim the full changelog only for what changes how I
+   use the app.
+9. Report, then end. Its first section is "What's new upstream": the notes
+   grouped by release, newest first, a few plain bullets each, new features
+   first, then fixes that matter, then anything I need to do (such as a new
+   setting to turn on), with the upstream PR number where the notes give one.
+   Then what upstream changed that touches the fork, each
    conflict and how you resolved it, the commits you added, and what you
    checked. Then, in one fenced block, a message I can paste to an agent on
    tiramisu. It tells that agent to:
