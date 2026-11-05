@@ -116,14 +116,14 @@ Updating is: rebase, rebuild, reinstall.
 On epsilon a timer does this by itself for each stable release, in a thread you
 answer when it needs a decision — see
 [Updating on each stable release](#updating-on-each-stable-release). By hand, with the
-release's tag (here `v0.1.6`):
+release's tag (here `v0.1.7`):
 
 ```fish
 cd ~/Projects/zxtra/t3code
 git fetch upstream --tags
-ZXTRA_UPSTREAM_REF=v0.1.6 ./zxtra/check-upstream.fish   # pre-flight: read this before deciding
-git branch zxtra-pre-v0.1.6 zxtra                        # backup
-git rebase v0.1.6 zxtra
+ZXTRA_UPSTREAM_REF=v0.1.7 ./zxtra/check-upstream.fish   # pre-flight: read this before deciding
+git branch zxtra-pre-v0.1.7 zxtra                        # backup
+git rebase v0.1.7 zxtra
 pnpm install                     # only when the lockfile moved
 pnpm tc                          # sanity-check the rebase before building
 ./zxtra/build-and-install.fish   # build, sign, back up, install
@@ -224,15 +224,19 @@ Only these upstream files are modified, each in one or two spots:
 | -------------------------------------------------------------- | ------------------------------------ |
 | `packages/contracts/src/settings.ts`                           | new settings + `ModelProfile` schema |
 | `apps/web/src/appearanceFonts.ts`                              | `--font-size-chat` variable          |
-| `apps/web/src/routes/__root.tsx`                               | applies the chat size                |
+| `apps/web/src/appInit.tsx`                                     | applies the chat size                |
 | `apps/web/src/components/ChatMarkdown.tsx`                     | applies the chat size                |
-| `apps/web/src/components/settings/SettingsPanels.tsx`          | Appearance rows                      |
+| `apps/web/src/components/settings/TypographySettings.tsx`      | Appearance rows                      |
+| `apps/web/src/components/settings/SettingsPanels.tsx`          | restores the chat size to default    |
 | `apps/web/src/components/settings/SettingsFontPreviews.tsx`    | chat font preview                    |
 | `apps/web/src/components/settings/settingsSearch.ts`           | makes the rows searchable            |
-| `apps/web/src/components/chat/ChatComposer.tsx`                | renders the profiles dropdown        |
-| `apps/web/src/components/ChatView.tsx`                         | applies a profile                    |
+| `apps/web/src/components/chat/ChatComposer.tsx`                | passes profiles to the footer        |
+| `apps/web/src/components/chat/ComposerControlsBar.tsx`         | renders the profiles dropdown        |
+| `apps/web/src/components/chat/useComposerSelection.ts`         | applies a profile                    |
+| `apps/web/src/components/ChatView.tsx`                         | wires the apply callback             |
 | `apps/web/src/components/chat/MessagesTimeline.tsx`            | drops the cite-selection button      |
 | `apps/web/src/components/chat/AssistantSelectionToolbar.tsx`   | deleted with the cite button         |
+| `apps/web/src/lib/selectionActions.ts`                         | drops a helper only it used          |
 | `apps/web/src/composer-list-continuation.ts`                   | keeps a list-starting empty marker   |
 | `apps/server/src/orchestration-v2/ProviderTurnStartService.ts` | quota gate before a turn starts      |
 | `apps/server/src/orchestration-v2/runtimeLayer.ts`             | wires the quota decorators           |
@@ -248,7 +252,7 @@ Two pinned versions, both via asdf:
 
 |      | version | why                                                                 |
 | ---- | ------- | ------------------------------------------------------------------- |
-| Node | 24.19.0 | the repo's `engines` field requires `^24.13.1`                      |
+| Node | 24.19.0 | builds and tests; the Linux executable alone uses `engines.node`    |
 | Rust | 1.98.0  | the native resource monitor needs >= 1.95 (`sysinfo` refuses older) |
 
 They are pinned in `.tool-versions`, which is deliberately kept out of the fork's git
@@ -338,9 +342,9 @@ the Linux CLI archive:
    the tag (`v0.1.6` ships `0.1.5`), so the checkout needs upstream's tags. The service keys its runtime folder on the version
    the binary reports, so the fork needs a version of its own.
 2. Builds the web client and server bundle, the Rust resource monitor, and the single
-   executable. The executable step runs on Node `SEA_NODE_VERSION` (from
-   `apps/server/vite.config.ts`, installed through mise), because `vp pack` needs a Node
-   25.7+ host.
+   executable. The executable step runs on `engines.node` from the root `package.json`
+   (26.12.1 at v0.1.7, installed through mise), because `vp pack` needs a Node 25.7+ host
+   and `apps/server/vite.config.ts` refuses any other version.
 3. Packs the CLI archive, then refuses to install it if it lacks the fork's markers or
    reports the wrong version.
 4. Unpacks it into `~/.t3/runtime/versions/<version>`, where `t3 service install` looks
@@ -379,5 +383,8 @@ Checks:
 pnpm tc                                     # typecheck (whole repo)
 cd apps/web; and pnpm test; and cd -
 cd packages/contracts; and pnpm test; and cd -
-cd apps/server; and pnpm test; and cd -     # entrypoint.test.ts fails upstream too
+cd apps/server; and pnpm test; and cd -     # AgentSessionScanner.test.ts fails upstream too
 ```
+
+The web suite's browser tests can time out under the load of a full run; re-run a failing
+file alone before suspecting it, and run what still fails on the release tag itself.
