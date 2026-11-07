@@ -111,8 +111,16 @@ once as "Codex", once by e-mail.
 A report with no e-mail but with an account id now joins the one login that id belongs
 to, and the merged entry takes the hub's e-mail. When two logins share the id, as members
 of one ChatGPT Business workspace do, nothing is joined. The change is in
-`accountKeyResolver` and `collectLimitAccounts` in `packages/shared/src/usageLimits.ts`,
-which serve web, desktop and mobile alike.
+`accountKeyResolver` and `collectLimitAccounts` in `packages/shared/src/usageLimits.ts`.
+
+That join runs in the client, so the phone app, which is upstream's store build, never
+gets it. The server therefore also drops its own Codex reading when Codex reports no
+account and no OpenAI login is required (`checkCodexProviderStatus` in
+`apps/server/src/provider/CodexProvider.ts`): it marks the usage `unsupported`, as upstream
+already does for an API key and as Claude does behind `ANTHROPIC_AUTH_TOKEN`. That reading
+came from the ChatGPT login left in `auth.json`, not necessarily the account the provider
+routes to. Every client then shows only the hub's entry; without a hub, Codex behind a
+custom provider shows no limits.
 
 ### Dropped: math (LaTeX) in chat
 
@@ -256,7 +264,7 @@ Only these upstream files are modified, each in one or two spots:
 | `apps/server/src/orchestration-v2/ProviderTurnStartService.ts` | quota gate before a turn starts      |
 | `apps/server/src/orchestration-v2/runtimeLayer.ts`             | wires the quota decorators           |
 | `apps/server/src/provider/ClaudeProvider.ts`                   | `/reserve` slash command             |
-| `apps/server/src/provider/CodexProvider.ts`                    | `/reserve` slash command             |
+| `apps/server/src/provider/CodexProvider.ts`                    | `/reserve`; no usage behind a proxy  |
 | `packages/shared/src/usageLimits.ts`                           | joins a login by its account id      |
 
 If a rebase conflicts, it will almost always be one of the small hunks in the table
