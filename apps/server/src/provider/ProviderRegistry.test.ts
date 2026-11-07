@@ -478,6 +478,33 @@ it.layer(
       }),
     );
 
+    it.effect("drops native usage when a custom model provider reports no account", () =>
+      Effect.gen(function* () {
+        // The usage read still answers from the ChatGPT login left in auth.json.
+        const status = yield* checkCodexProviderStatus(defaultCodexSettings, () =>
+          Effect.succeed(
+            makeCodexProbeSnapshot({
+              account: {
+                account: null,
+                requiresOpenaiAuth: false,
+              },
+              rateLimits: {
+                snapshot: {
+                  planType: "pro",
+                  primary: { usedPercent: 10, resetsAt: null, windowDurationMins: 300 },
+                },
+                resetCredits: null,
+              },
+            }),
+          ),
+        );
+
+        assert.strictEqual(status.status, "ready");
+        assert.deepStrictEqual(status.usageLimits?.unavailable, { reason: "unsupported" });
+        assert.deepStrictEqual(status.usageLimits?.windows, []);
+      }),
+    );
+
     it.effect("reads the version of a Codex CLI too old to run app-server (#20351)", () =>
       Effect.gen(function* () {
         if ((yield* HostProcess.Platform) === "win32") return;

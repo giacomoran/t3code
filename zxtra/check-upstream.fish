@@ -107,7 +107,8 @@ for row in \
     "quota  :: Claude streams limits into the shared snapshot  :: apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts :: onUsageLimits" \
     "quota  :: Codex streams limits into the shared snapshot   :: apps/server/src/orchestration-v2/Adapters/CodexAdapterV2.ts :: onUsageLimits" \
     "limits :: Codex workspace comes from its usage account id  :: apps/server/src/provider/CodexProvider.ts :: rateLimits.accountId" \
-    "limits :: hub workspace is the same ChatGPT account id     :: apps/server/src/usage/cliproxyApi.ts :: chatgpt_account_id"
+    "limits :: hub workspace is the same ChatGPT account id     :: apps/server/src/usage/cliproxyApi.ts :: chatgpt_account_id" \
+    "limits :: Codex behind a proxy reports no account          :: apps/server/src/provider/CodexProvider.ts :: requiresOpenaiAuth"
     set --local parts (string split "::" -- $row)
     set --local feature (string trim -- $parts[1])
     set --local why (string trim -- $parts[2])
