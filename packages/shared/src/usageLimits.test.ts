@@ -686,64 +686,6 @@ describe("pools", () => {
     ]);
   });
 
-  it("joins a native login without an email to the one hub account with its account id", () => {
-    const native = (workspaceId: string) =>
-      provider({
-        displayName: "Codex",
-        auth: { status: "authenticated", workspaceId },
-        usageLimits: { checkedAt, windows: [window] },
-      });
-    const hubAccount = (id: string, email: string, workspaceId: string) => ({
-      id,
-      driver: ProviderDriverKind.make("codex"),
-      email,
-      workspaceId,
-      usageLimits: { checkedAt, windows: [window] },
-    });
-    const withNative = (workspaceId: string) =>
-      new Map([
-        [
-          EnvironmentId.make("env-a"),
-          {
-            ...laptop,
-            serverConfig: {
-              providers: [native(workspaceId)],
-              usageLimitSources: [
-                {
-                  ...source,
-                  accounts: [
-                    hubAccount("plus.json", "a@example.com", "acct-plus"),
-                    hubAccount("team-a.json", "b@example.com", "acct-team"),
-                    hubAccount("team-b.json", "c@example.com", "acct-team"),
-                  ],
-                },
-              ],
-            },
-          },
-        ],
-      ]);
-
-    // A personal account id names one login, so the two reports become one entry
-    expect(
-      collectLimitAccounts(withNative("acct-plus")).map(({ displayName, email }) => ({
-        displayName,
-        email,
-      })),
-    ).toEqual([
-      { displayName: null, email: "a@example.com" },
-      { displayName: null, email: "b@example.com" },
-      { displayName: null, email: "c@example.com" },
-    ]);
-
-    // A workspace shared by two logins cannot say which one the native report is
-    expect(collectLimitAccounts(withNative("acct-team")).map((account) => account.key)).toEqual([
-      "env-a:codex",
-      "hub:plus.json:acct-plus",
-      "hub:team-a.json:acct-team",
-      "hub:team-b.json:acct-team",
-    ]);
-  });
-
   it("keys a hub account without an email by hub, so two environments on one hub share it", () => {
     const seat = {
       id: "claude-team-seat.json",

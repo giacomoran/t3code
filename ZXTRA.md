@@ -99,29 +99,6 @@ wrong for a `1. ` or `- ` typed on purpose at the top of a list. The marker is n
 only when the line above is also a list item; otherwise Enter is a plain newline. Upstream
 covers the no-space case (`1.`) since v0.1.1; this covers the rest.
 
-### 6. One Limits entry for a Codex login routed through CLIProxy
-
-When `~/.codex/config.toml` points Codex at a custom `model_provider` such as CLIProxy,
-Codex stops reporting the login's e-mail and plan, but still reports its ChatGPT account
-id with the usage reading. A CLIProxy usage source reports the same login with its e-mail
-and the same id (`chatgpt_account_id`) as its workspace. Upstream merges two reports only
-by e-mail or credential fingerprint, so `Usage → Limits` showed the one account twice:
-once as "Codex", once by e-mail.
-
-A report with no e-mail but with an account id now joins the one login that id belongs
-to, and the merged entry takes the hub's e-mail. When two logins share the id, as members
-of one ChatGPT Business workspace do, nothing is joined. The change is in
-`accountKeyResolver` and `collectLimitAccounts` in `packages/shared/src/usageLimits.ts`.
-
-That join runs in the client, so the phone app, which is upstream's store build, never
-gets it. The server therefore also drops its own Codex reading when Codex reports no
-account and no OpenAI login is required (`checkCodexProviderStatus` in
-`apps/server/src/provider/CodexProvider.ts`): it marks the usage `unsupported`, as upstream
-already does for an API key and as Claude does behind `ANTHROPIC_AUTH_TOKEN`. That reading
-came from the ChatGPT login left in `auth.json`, not necessarily the account the provider
-routes to. Every client then shows only the hub's entry; without a hub, Codex behind a
-custom provider shows no limits.
-
 ### Dropped: math (LaTeX) in chat
 
 The fork rendered LaTeX with KaTeX behind a three-way setting until v0.1.1, when
@@ -264,8 +241,7 @@ Only these upstream files are modified, each in one or two spots:
 | `apps/server/src/orchestration-v2/ProviderTurnStartService.ts` | quota gate before a turn starts      |
 | `apps/server/src/orchestration-v2/runtimeLayer.ts`             | wires the quota decorators           |
 | `apps/server/src/provider/ClaudeProvider.ts`                   | `/reserve` slash command             |
-| `apps/server/src/provider/CodexProvider.ts`                    | `/reserve`; no usage behind a proxy  |
-| `packages/shared/src/usageLimits.ts`                           | joins a login by its account id      |
+| `apps/server/src/provider/CodexProvider.ts`                    | `/reserve` slash command             |
 
 If a rebase conflicts, it will almost always be one of the small hunks in the table
 above.
