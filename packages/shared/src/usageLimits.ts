@@ -217,23 +217,14 @@ const nativeReport = (provider: ServerProvider): AccountReport => ({
 // Include every enabled login, even unreadable workspaces.
 function accountKeyResolver(reports: Iterable<AccountReport>) {
   const workspaces = new Map<string, Set<string>>();
-  const owners = new Map<string, Set<string>>();
   for (const report of reports) {
     const key = accountKey(report.driver, report.email, report.usageLimits);
     if (key && report.workspaceId) {
       workspaces.set(key, (workspaces.get(key) ?? new Set()).add(report.workspaceId));
-      const workspace = `${report.driver}:${report.workspaceId}`;
-      owners.set(workspace, (owners.get(workspace) ?? new Set()).add(key));
     }
   }
   return (report: AccountReport): string | null => {
     const key = accountKey(report.driver, report.email, report.usageLimits);
-    // zxtra: Codex on a custom model provider reports no e-mail, only its account id;
-    // join it to the one login that id belongs to.
-    if (!key && report.workspaceId) {
-      const known = owners.get(`${report.driver}:${report.workspaceId}`);
-      return known?.size === 1 ? `${[...known][0]}:${report.workspaceId}` : null;
-    }
     if (!key) return null;
     if (report.workspaceId) return `${key}:${report.workspaceId}`;
     const known = workspaces.get(key);
@@ -321,8 +312,6 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
         displayName?.toLowerCase() === PROVIDER_DISPLAY_NAMES[previous.driver]?.toLowerCase()
           ? null
           : displayName,
-      // zxtra: a login joined by account id alone has its e-mail only from the hub.
-      email: previous.email ?? next.email,
       plan: planSources.get(key)?.plan ?? previous.plan ?? next.plan,
       accentColor: previous.accentColor ?? next.accentColor,
       environments,

@@ -842,14 +842,8 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
   const accountStatus = managedAuth
     ? { status: "ready" as const, auth: managedAuth, message: undefined }
     : accountProbeStatus(snapshot);
-  // A custom model provider (requires_openai_auth = false) reports no account, yet the
-  // usage read still answers for whatever ChatGPT login sits in auth.json. That is not
-  // necessarily the account the provider routes to, and without an email it cannot be
-  // merged with the same account read through a hub, so treat it like an API key.
-  const usesCustomModelProvider =
-    !managedAuth && !snapshot.account.account && !snapshot.account.requiresOpenaiAuth;
   const usageLimits =
-    snapshot.account.account?.type === "apiKey" || usesCustomModelProvider
+    snapshot.account.account?.type === "apiKey"
       ? makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" })
       : snapshot.rateLimits === undefined || "failure" in snapshot.rateLimits
         ? makeUnavailableUsageLimits({
