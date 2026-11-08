@@ -97,7 +97,9 @@ for row in \
     "profile:: model-change guards a profile routes through    :: apps/web/src/components/ChatView.tsx :: onProviderModelSelect" \
     "profile:: trait payload stored in a profile               :: packages/contracts/src/model.ts :: ProviderOptionSelections" \
     "profile:: client-settings writer the composer uses        :: apps/web/src/hooks/useSettings.ts :: updateClientSettings" \
-    "list   :: marker parser the list-start check reuses       :: apps/web/src/composer-list-continuation.ts :: parseListMarker"
+    "list   :: marker parser the list-start check reuses       :: apps/web/src/composer-list-continuation.ts :: parseListMarker" \
+    "limits :: Codex workspace comes from its usage account id  :: apps/server/src/provider/CodexProvider.ts :: rateLimits.accountId" \
+    "limits :: hub workspace is the same ChatGPT account id     :: apps/server/src/usage/cliproxyApi.ts :: chatgpt_account_id"
     set --local parts (string split "::" -- $row)
     set --local feature (string trim -- $parts[1])
     set --local why (string trim -- $parts[2])
