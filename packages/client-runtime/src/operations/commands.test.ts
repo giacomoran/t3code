@@ -41,6 +41,7 @@ import {
   revertThreadCheckpoint,
   resumeThreadQueue,
   startThreadTurn,
+  updateThreadMetadata,
 } from "./commands.ts";
 
 const layerTestRandom = Layer.succeed(
@@ -131,6 +132,32 @@ const makeSupervisor = Effect.fn("TestEnvironmentCommands.makeSupervisor")(funct
 });
 
 describe("V2 environment commands", () => {
+  it.effect("sends notification-only metadata updates including explicit unmute", () =>
+    Effect.gen(function* () {
+      const commands: OrchestrationV2Command[] = [];
+      const supervisor = yield* makeSupervisor({ commands, projects: [] });
+      const threadId = ThreadId.make("thread-muted");
+      for (const notificationsMuted of [true, false]) {
+        yield* updateThreadMetadata({ threadId, notificationsMuted }).pipe(
+          Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+        );
+      }
+      expect(commands.map((command) => ({ ...command, commandId: undefined }))).toEqual([
+        {
+          type: "thread.metadata.update",
+          commandId: undefined,
+          threadId,
+          notificationsMuted: true,
+        },
+        {
+          type: "thread.metadata.update",
+          commandId: undefined,
+          threadId,
+          notificationsMuted: false,
+        },
+      ]);
+    }).pipe(Effect.provide(layerTestRandom)),
+  );
   it.effect("distinguishes sending a selected queued message from resuming queue order", () =>
     Effect.gen(function* () {
       const commands: OrchestrationV2Command[] = [];

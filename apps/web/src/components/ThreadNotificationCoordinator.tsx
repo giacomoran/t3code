@@ -86,6 +86,18 @@ export function startThreadNotifications(
     if (remaining.length === 0) openToasts.delete(key);
     else openToasts.set(key, remaining);
   };
+  const closeThreadNotifications = (environmentId: EnvironmentId, threadId: ThreadId) => {
+    const key = threadKey({ environmentId, threadId });
+    for (const toastId of openToasts.get(key) ?? []) toastManager.close(toastId);
+    openToasts.delete(key);
+    const count = pending.size;
+    for (const [tag, entry] of pending) {
+      if (entry.environmentId !== environmentId || entry.threadId !== threadId) continue;
+      entry.notification.close();
+      pending.delete(tag);
+    }
+    if (count !== pending.size) setNotificationBadge(pending.size);
+  };
   // A notification shown before the tag filter turned on must not stay on screen. While hiding,
   // one whose thread left the live list (archived) cannot be judged, so it closes too.
   const closeHiddenPending = () => {
@@ -119,6 +131,7 @@ export function startThreadNotifications(
     kind: ThreadNotificationKind,
   ) => {
     const { thread, status } = state;
+    if (thread.notificationsMuted === true) return;
     if (
       registry
         .get(environmentThreadShells.hiddenThreadKeysAtom)
@@ -143,9 +156,14 @@ export function startThreadNotifications(
                 ? "Guest request"
                 : "Input needed";
     if (hasNotificationSound(mode)) {
-      void playNotificationSound(kind, () =>
-        hasNotificationSound(getClientSettings().notificationMode),
-      );
+      void playNotificationSound(kind, () => {
+        const current = watched.get(environmentId)?.previous.get(thread.id);
+        return (
+          current !== undefined &&
+          current.thread.notificationsMuted !== true &&
+          hasNotificationSound(getClientSettings().notificationMode)
+        );
+      });
     }
     if (
       inAppNotificationsEnabled &&
@@ -286,9 +304,13 @@ export function startThreadNotifications(
     entry.previous = next;
     entry.gate.retain(new Set(next.keys()));
     for (const [prior, state] of changed) {
+      if (state.thread.notificationsMuted === true) {
+        closeThreadNotifications(environmentId, state.thread.id);
+      }
       entry.gate.observe(state.thread.id, prior, state, {
         archived: state.thread.archivedAt !== null,
         quiet: state.raw.latestRunStopRequested === true,
+        muted: state.thread.notificationsMuted === true,
       });
     }
   };

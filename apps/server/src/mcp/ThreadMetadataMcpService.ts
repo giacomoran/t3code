@@ -79,6 +79,14 @@ function metadataCommand(input: {
         threadId: input.threadId,
         regenerateTitle: true,
       };
+    case "mute_notifications":
+    case "unmute_notifications":
+      return {
+        type: "thread.metadata.update",
+        commandId: input.commandId,
+        threadId: input.threadId,
+        notificationsMuted: input.update.action === "mute_notifications",
+      };
   }
 }
 
@@ -88,7 +96,7 @@ function resultFromThread(input: {
   readonly sequence: number;
   readonly thread: Pick<
     OrchestrationV2AppThread,
-    "id" | "title" | "titleRegeneration" | "linkedPullRequest" | "updatedAt"
+    "id" | "title" | "titleRegeneration" | "linkedPullRequest" | "updatedAt" | "notificationsMuted"
   >;
 }): ThreadMetadataMcpUpdateResult {
   return {
@@ -97,6 +105,7 @@ function resultFromThread(input: {
     commandId: input.commandId,
     sequence: input.sequence,
     title: input.thread.title,
+    notificationsMuted: input.thread.notificationsMuted === true,
     titleRegeneration:
       input.thread.titleRegeneration === undefined || input.thread.titleRegeneration === null
         ? null

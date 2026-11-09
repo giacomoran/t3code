@@ -362,6 +362,7 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
       for (const [name, args] of [
         ["t3_thread_send", { message: "From the laptop." }],
         ["t3_thread_interrupt", {}],
+        ["t3_thread_update", { action: "mute_notifications" }],
       ] as const) {
         const result = yield* call(laptop, name, {
           ...args,
@@ -400,6 +401,14 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
         title: "Renamed from the desk",
       });
       assert.equal(renamed.isError, false, JSON.stringify(renamed.content));
+      for (const [action, muted] of [
+        ["mute_notifications", true],
+        ["unmute_notifications", false],
+      ] as const) {
+        const updated = yield* call(trusted, "t3_thread_update", { threadId: users, action });
+        assert.equal(updated.isError, false, JSON.stringify(updated.content));
+        assert.equal((yield* projections.getThreadShell(users))?.notificationsMuted, muted);
+      }
       for (const [name, args] of [
         ["t3_project_update", { projectId, title: "The desk's now" }],
         ["t3_project_create", { title: "t3code", workspaceRoot: "/p/t3code" }],

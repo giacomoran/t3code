@@ -9,6 +9,7 @@ const baseState: ThreadActionMenuState = {
   isPinned: false,
   isSettled: false,
   autoSettleEnabled: true,
+  notificationsMuted: false,
   isSnoozed: false,
   canSnoozeNow: true,
   isRegeneratingTitle: false,
@@ -19,6 +20,7 @@ const baseState: ThreadActionMenuState = {
     snooze: true,
     pinning: true,
     titleRegeneration: true,
+    notificationMuting: true,
   },
   snoozePresets: [
     { id: "hour", label: "In 1 hour", whenLabel: "3:00 PM", snoozedUntil: "2026-08-07T15:00:00Z" },
@@ -35,6 +37,7 @@ describe("buildThreadActionMenuItems", () => {
         isPinned: reversed,
         isSettled: reversed,
         isSnoozed: reversed,
+        notificationsMuted: reversed,
       });
       const expected = reversed
         ? [
@@ -43,6 +46,7 @@ describe("buildThreadActionMenuItems", () => {
             "unsnooze",
             "rename",
             "regenerate-title",
+            "unmute-notifications",
             "auto-settle",
             "archive",
             "delete",
@@ -53,6 +57,7 @@ describe("buildThreadActionMenuItems", () => {
             "snooze",
             "rename",
             "regenerate-title",
+            "mute-notifications",
             "auto-settle",
             "archive",
             "delete",

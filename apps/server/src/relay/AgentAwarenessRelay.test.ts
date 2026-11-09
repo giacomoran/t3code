@@ -502,6 +502,64 @@ describe("AgentAwarenessRelay", () => {
     }),
   );
 
+  it.effect(
+    "clears muted activity immediately and never replays a muted completion on unmute",
+    () =>
+      Effect.gen(function* () {
+        const { relay, currentShell, publications } = yield* makeTestRelay();
+        const runId = RunId.make("run:muted");
+        yield* Ref.set(currentShell, shell({ latestRunId: runId }));
+        yield* relay.publishThread(THREAD_ID);
+        yield* Ref.set(currentShell, shell({ latestRunId: runId, notificationsMuted: true }));
+        yield* relay.publishThread(THREAD_ID);
+        assert.deepEqual(
+          publications.map((publication) => publication.state?.phase ?? null),
+          ["running", null],
+        );
+
+        const completion = shell({
+          latestRunId: runId,
+          status: "completed",
+          latestRunCompletedAt: DateTime.makeUnsafe("2026-09-04T12:00:01Z"),
+        });
+        yield* Ref.set(currentShell, { ...completion, notificationsMuted: true });
+        yield* relay.publishThread(THREAD_ID);
+        yield* Ref.set(currentShell, { ...completion, notificationsMuted: false });
+        yield* relay.publishThread(THREAD_ID);
+        yield* TestClock.adjust("5 seconds");
+        yield* relay.drain;
+        assert.equal(publications.length, 2);
+
+        // Hiding and restoring the row must not resurrect the consumed result either.
+        yield* Ref.set(currentShell, {
+          ...completion,
+          settledOverride: "settled",
+          settledAt: completion.latestRunCompletedAt!,
+        });
+        yield* relay.publishThread(THREAD_ID);
+        yield* Ref.set(currentShell, completion);
+        yield* relay.publishThread(THREAD_ID);
+        yield* TestClock.adjust("5 seconds");
+        yield* relay.drain;
+        assert.equal(publications.length, 2);
+
+        // Future work resumes normal notification delivery after unmuting.
+        yield* Ref.set(currentShell, shell({ latestRunId: RunId.make("run:next") }));
+        yield* relay.publishThread(THREAD_ID);
+        yield* Ref.set(currentShell, {
+          ...completion,
+          latestRunId: RunId.make("run:next"),
+        });
+        yield* relay.publishThread(THREAD_ID);
+        yield* TestClock.adjust("5 seconds");
+        yield* relay.drain;
+        assert.deepEqual(
+          publications.map((publication) => publication.state?.phase ?? null),
+          ["running", null, "running", "completed"],
+        );
+      }),
+  );
+
   it.effect("republishes unchanged state with fresh credentials after relinking", () =>
     Effect.gen(function* () {
       const { relay, secrets, publications } = yield* makeTestRelay();

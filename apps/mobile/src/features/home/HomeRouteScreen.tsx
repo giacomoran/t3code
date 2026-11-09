@@ -95,6 +95,7 @@ export function HomeRouteScreen() {
     moveThread,
     renameThread,
     regenerateThreadTitle,
+    setThreadNotificationsMuted,
     unsettleThread,
   } = useThreadListActions();
   const pendingTasks = usePendingNewTasks();
@@ -204,6 +205,7 @@ export function HomeRouteScreen() {
           onMoveThread={moveThread}
           onRenameThread={renameThread}
           onRegenerateThreadTitle={regenerateThreadTitle}
+          onSetThreadNotificationsMuted={setThreadNotificationsMuted}
           onEnvironmentChange={setSelectedEnvironmentId}
           onProjectChange={setSelectedProjectKey}
           onOpenSettings={() => selectTab("settings")}

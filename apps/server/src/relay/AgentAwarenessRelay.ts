@@ -413,6 +413,9 @@ export const make = Effect.gen(function* () {
   // its first alert time through parent renames, relinks and the parent's own requests.
   const childAlertByThread = new Map<ThreadId, SubagentAlert>();
   const subagentRequests = new Map<ThreadId, SubagentRequest>();
+  // Remember muted work even after its card is cleared, so unmuting never alerts its old result.
+  // Startup's terminal timestamp guard covers work completed before this process existed.
+  const mutedRunByThread = new Map<ThreadId, AgentAwarenessThread["latestRunId"]>();
 
   const readSecretString = (name: string) =>
     secrets
@@ -571,12 +574,33 @@ export const make = Effect.gen(function* () {
     const project = Option.isSome(thread)
       ? yield* projects.getById(thread.value.projectId)
       : Option.none<Project>();
-    const snapshot = resolveAgentAwarenessRelayPublishSnapshot({
+    const projectedSnapshot = resolveAgentAwarenessRelayPublishSnapshot({
       environmentId,
       thread,
       project,
       pendingSubagentRequest: yield* currentSubagentRequestFor(threadId),
     });
+    if (threadShell?.notificationsMuted === true) {
+      mutedRunByThread.set(threadId, threadShell.latestRunId);
+    }
+    const terminal =
+      projectedSnapshot.state?.phase === "completed" || projectedSnapshot.state?.phase === "failed";
+    if (
+      threadShell === null ||
+      (threadShell.notificationsMuted !== true &&
+        (threadShell.latestRunId !== mutedRunByThread.get(threadId) ||
+          (projectedSnapshot.state !== null && !terminal)))
+    ) {
+      mutedRunByThread.delete(threadId);
+    }
+    const mutedCompletion =
+      terminal &&
+      mutedRunByThread.has(threadId) &&
+      mutedRunByThread.get(threadId) === threadShell?.latestRunId;
+    const suppressNotifications = threadShell?.notificationsMuted === true || mutedCompletion;
+    const snapshot = suppressNotifications
+      ? { ...projectedSnapshot, state: null, subagentWait: null, reason: "notifications-muted" as const }
+      : projectedSnapshot;
     const publishIdentity = agentAwarenessPublishIdentity(snapshot.state, snapshot.subagentWait);
     const publishedStateByThread = yield* Ref.get(publishedStateByThreadRef);
     if (
@@ -604,7 +628,9 @@ export const make = Effect.gen(function* () {
     // Confirm tombstones over live state to avoid removing active cards.
     // Confirm completion: a run can end moments before its continuation starts, and the relay
     // alerts on every move into completed.
-    const requiresConfirmation = snapshot.state === null || snapshot.state?.phase === "completed";
+    const requiresConfirmation =
+      snapshot.reason !== "notifications-muted" &&
+      (snapshot.state === null || snapshot.state?.phase === "completed");
     if (requiresConfirmation) {
       if (snapshot.state?.phase === "completed") heldCompletions.add(threadId);
       const nowMs = (yield* DateTime.now).epochMilliseconds;

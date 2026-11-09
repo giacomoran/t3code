@@ -30,6 +30,7 @@ import { readEnvironmentScope } from "../state/session";
 import {
   readEnvironmentServerConfigLoaded,
   readEnvironmentSupportsAutoSettleOptOut,
+  readEnvironmentSupportsNotificationMuting,
   readThreadShell,
   useProjects,
 } from "../state/entities";
@@ -133,6 +134,7 @@ export function useThreadActionMenu(input: {
         snooze: configLoaded,
         pinning: configLoaded,
         titleRegeneration: configLoaded,
+        notificationMuting: readEnvironmentSupportsNotificationMuting(threadRef.environmentId),
       };
       const isRegeneratingTitle = thread.titleRegeneration != null;
       const snoozePresets = resolveSnoozePresets(now, timestampFormat, threadRef.environmentId);
@@ -144,6 +146,7 @@ export function useThreadActionMenu(input: {
         isPinned: thread.pinnedAt != null,
         isSettled: supports.settlement && thread.settledOverride === "settled",
         autoSettleEnabled: thread.autoSettleDisabledAt == null,
+        notificationsMuted: thread.notificationsMuted === true,
         isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
         canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
         isRegeneratingTitle,
@@ -261,6 +264,18 @@ export function useThreadActionMenu(input: {
           return;
         case "mark-unread":
           markThreadUnread(threadRef);
+          return;
+        case "mute-notifications":
+        case "unmute-notifications":
+          await reportFailure("Failed to update thread notifications", () =>
+            updateThreadMetadata({
+              environmentId: threadRef.environmentId,
+              input: {
+                threadId: threadRef.threadId,
+                notificationsMuted: action === "mute-notifications",
+              },
+            }),
+          );
           return;
         case "share-guest":
           openGuestShareDialog(threadRef);

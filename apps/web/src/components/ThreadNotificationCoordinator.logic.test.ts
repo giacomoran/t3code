@@ -194,4 +194,28 @@ describe("createThreadNotificationGate", () => {
       expect(notify).not.toHaveBeenCalled();
     }
   });
+
+  it("consumes muted attention and completions without replaying them on unmute", () => {
+    const { notify, observe } = harness();
+    const muted = { ...visible, muted: true };
+    const attention = { ...working, attention: "run-1:approval:a", requestId: "a" };
+    observe(working);
+    observe(attention, muted);
+    observe(completed(1), muted);
+    observe({ ...completed(1) });
+    expect(notify).not.toHaveBeenCalled();
+    observe(working);
+    observe(completed(2));
+    expect(notify.mock.calls).toEqual([["thread", "completion"]]);
+  });
+
+  it("drops a pending wake completion when the thread is muted", () => {
+    using _timers = fakeTimers();
+    const { notify, observe } = harness();
+    observe(waking);
+    observe(woke(1));
+    observe({ ...woke(1) }, { ...visible, muted: true });
+    vi.advanceTimersByTime(RELEASED_COMPLETION_GRACE_MS);
+    expect(notify).not.toHaveBeenCalled();
+  });
 });
