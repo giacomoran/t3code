@@ -2453,11 +2453,13 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       const retriedCreate = yield* orchestrator.dispatch(create);
       assert.equal(retriedCreate.sequence, firstCreate.sequence);
       assert.lengthOf(retriedCreate.storedEvents, 1);
+      assert.notEqual((yield* orchestrator.getThreadShell(threadId))?.notificationsMuted, true);
 
       yield* orchestrator.dispatch({
         type: "thread.metadata.update",
         commandId: CommandId.make("runtime-layer-lifecycle-metadata"),
         threadId,
+        notificationsMuted: true,
         title: "Renamed lifecycle thread",
         branch: "feature/v2",
         worktreePath: "/tmp/t3-v2-worktree",
@@ -2476,6 +2478,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       const projectionAfterStaleWorkspaceUpdate = yield* orchestrator.getThreadProjection(threadId);
       assert.equal(projectionAfterStaleWorkspaceUpdate.thread.branch, "feature/v2");
       assert.equal(projectionAfterStaleWorkspaceUpdate.thread.worktreePath, "/tmp/t3-v2-worktree");
+      assert.equal(projectionAfterStaleWorkspaceUpdate.thread.notificationsMuted, true);
+      assert.equal((yield* orchestrator.getThreadShell(threadId))?.notificationsMuted, true);
       const pullRequestSnapshot = yield* orchestrator.getShellSnapshot();
       const pullRequest = {
         projectId,
@@ -2569,6 +2573,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       const shellOf = (shell: Pick<OrchestrationV2ShellSnapshot, "threads">) =>
         shell.threads.find((thread) => thread.id === threadId)!;
       const untaggedShell = shellOf(yield* orchestrator.getShellSnapshot());
+      assert.equal(untaggedShell.notificationsMuted, true);
       yield* TestClock.adjust("1 minute");
       for (const [step, tag, tagged, expected] of [
         ["add", "demo", true, ["demo"]],
@@ -2658,6 +2663,18 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         (thread) => thread.id === threadId,
       );
       assert.deepEqual(activeShell?.unsettledAt, activeProjection.thread.unsettledAt);
+      assert.equal(activeShell?.notificationsMuted, true);
+      yield* orchestrator.dispatch({
+        type: "thread.metadata.update",
+        commandId: CommandId.make("runtime-layer-lifecycle-unmute"),
+        threadId,
+        notificationsMuted: false,
+      });
+      assert.equal(
+        (yield* orchestrator.getThreadProjection(threadId)).thread.notificationsMuted,
+        false,
+      );
+      assert.equal((yield* orchestrator.getThreadShell(threadId))?.notificationsMuted, false);
 
       yield* orchestrator.dispatch({
         type: "thread.settle",

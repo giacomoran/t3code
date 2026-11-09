@@ -127,9 +127,21 @@ Text generation**, under Advanced, such as a length limit or an identifier to pu
 regenerated titles. Select a project to give it its own instructions.
 
 Agents connected through T3 Code can use the same server-owned metadata workflow to
-rename a thread, regenerate its title, or link and unlink a pull request. These changes
+rename a thread, regenerate its title, mute and unmute notifications, or link and unlink a pull request. These changes
 appear on web, desktop, and mobile without requiring the originating browser to remain
 open.
+
+### Mute thread notifications
+
+Choose **Mute notifications** from a thread's menu to silence its sound, alerts and
+notification badge on connected clients, including mobile push and ongoing activity.
+The crossed-out bell marks muted threads. Work and incoming agent messages continue.
+Choose **Unmute notifications** to restore future alerts without replaying muted completions.
+
+On web and desktop, select several threads and open the selection's context menu to
+mute or unmute them together. A mixed selection offers both actions, with the number
+of threads each will change. These controls require an environment server that supports
+thread notification muting.
 
 ### Fold working threads (beta)
 

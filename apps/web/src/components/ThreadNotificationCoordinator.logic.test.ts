@@ -110,4 +110,18 @@ describe("createThreadNotificationGate", () => {
       expect(notify.mock.calls).toEqual([["thread", "completion"]]);
     }
   });
+
+  it("consumes muted attention and completions without replaying them on unmute", () => {
+    const notify = vi.fn();
+    const gate = createThreadNotificationGate<string>(notify);
+    const attention = { attention: "run-1:approval", settled: false, completedAt: null };
+    gate.observe("thread", undefined, working, visible);
+    gate.observe("thread", working, attention, { ...visible, muted: true });
+    gate.observe("thread", attention, completed(1), { ...visible, muted: true });
+    gate.observe("thread", completed(1), completed(1), visible);
+    expect(notify).not.toHaveBeenCalled();
+    gate.observe("thread", completed(1), working, visible);
+    gate.observe("thread", working, completed(2), visible);
+    expect(notify.mock.calls).toEqual([["thread", "completion"]]);
+  });
 });

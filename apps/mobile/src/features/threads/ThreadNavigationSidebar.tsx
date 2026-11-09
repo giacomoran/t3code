@@ -173,6 +173,7 @@ function ThreadNavigationSidebarPane(
     moveThread,
     renameThread,
     regenerateThreadTitle,
+    setThreadNotificationsMuted,
   } = useThreadListActions();
   const pendingTasks = usePendingNewTasks();
   const activeNewTask = useActiveNewTask();
@@ -291,6 +292,7 @@ function ThreadNavigationSidebarPane(
     snoozePresetsByEnvironmentId,
     pinningEnvironmentIds,
     autoSettleOptOutEnvironmentIds,
+    notificationMutingEnvironmentIds,
     pinReorderEnvironmentIds,
     activeReorderEnvironmentIds,
     titleRegenerationEnvironmentIds,
@@ -592,6 +594,8 @@ function ThreadNavigationSidebarPane(
             onArchiveThread={archiveThread}
             onRenameThread={renameThread}
             onRegenerateThreadTitle={regenerateThreadTitle}
+            onSetThreadNotificationsMuted={setThreadNotificationsMuted}
+            notificationMutingSupported={notificationMutingEnvironmentIds.has(thread.environmentId)}
             titleRegenerationSupported={titleRegenerationEnvironmentIds.has(thread.environmentId)}
             settlementSupported={settlementEnvironmentIds.has(thread.environmentId)}
             onSettleThread={settleThread}

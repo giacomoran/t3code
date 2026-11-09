@@ -22,11 +22,11 @@ export function createThreadNotificationGate<Key>(
       key: Key,
       prior: ThreadNotificationObservation | undefined,
       next: ThreadNotificationObservation,
-      options: { readonly archived: boolean; readonly quiet: boolean },
+      options: { readonly archived: boolean; readonly quiet: boolean; readonly muted?: boolean },
     ): void {
       // The first sighting, archived threads, and stopped or silent runs never notify completion.
-      if (!prior || options.archived || options.quiet) skip(key, next.completedAt);
-      if (!prior || options.archived) return;
+      if (!prior || options.archived || options.quiet || options.muted) skip(key, next.completedAt);
+      if (!prior || options.archived || options.muted) return;
       if (next.attention && next.attention !== prior.attention) {
         notify(key, "input");
         return;

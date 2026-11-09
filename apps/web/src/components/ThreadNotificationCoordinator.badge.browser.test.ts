@@ -11,6 +11,7 @@ const state = vi.hoisted(() => ({
   mode: "notifications",
   inApp: false,
   toast: vi.fn(),
+  closeToast: vi.fn(),
   shells: null as unknown as { set: (id: string, value: unknown) => void },
   navigate: vi.fn(),
   sound: vi.fn(),
@@ -19,7 +20,14 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock(import("./ui/toast"), async (original) => {
   const actual = await original();
-  return { ...actual, toastManager: { ...actual.toastManager, add: state.toast as never } };
+  return {
+    ...actual,
+    toastManager: {
+      ...actual.toastManager,
+      add: state.toast as never,
+      close: state.closeToast as never,
+    },
+  };
 });
 vi.mock(import("../state/shell"), async (original) => {
   const actual = await original();
@@ -104,6 +112,7 @@ const thread = {
   id: "thread",
   title: "Test thread",
   archivedAt: null as string | null,
+  notificationsMuted: false,
   hasPendingApprovals: false,
   hasPendingUserInput: false,
   session: null as { status: string } | null,
@@ -161,6 +170,7 @@ function toV2ThreadShell(input: typeof thread) {
       ? DateTime.makeUnsafe(latestTurn.completedAt)
       : undefined,
     archivedAt: input.archivedAt ? DateTime.makeUnsafe(input.archivedAt) : null,
+    notificationsMuted: input.notificationsMuted,
     settledOverride: null,
     settledAt: null,
     lastVisitedAt: null,
@@ -188,6 +198,7 @@ function setup() {
   stack.defer(() => testRegistry.dispose());
   state.mode = "notifications";
   state.inApp = false;
+  state.toast.mockImplementation(() => `toast-${state.toast.mock.calls.length}`);
   state.settingsListeners.clear();
   registry.set(environmentIdsAtom, ["one", "two"]);
   state.shells.set("one", shell());
@@ -253,6 +264,61 @@ it("presents completion notifications and sound as soon as the shell completes",
   expect(TestNotification.sent.map((sent) => sent.title)).toEqual(["Thread completed"]);
   expect(state.sound).toHaveBeenCalledWith("completion", expect.any(Function));
 });
+
+it.each([false, true])(
+  "mutes all alert channels without replay on unmute (in app: %s)",
+  async (inApp) => {
+    await using app = setup();
+    state.mode = "notifications-and-sound";
+    state.inApp = inApp;
+    focused = inApp;
+    app.start();
+    const completed = {
+      latestTurn: { turnId: "turn", state: "completed", completedAt: "2026-09-13T07:00:01.000Z" },
+    };
+    state.shells.set("one", shell({ notificationsMuted: true, hasPendingApprovals: true }));
+    state.shells.set("one", shell({ ...completed, notificationsMuted: true }));
+    state.shells.set("one", shell(completed));
+    expect(TestNotification.sent).toEqual([]);
+    expect(state.toast).not.toHaveBeenCalled();
+    expect(state.sound).not.toHaveBeenCalled();
+    state.shells.set("two", shell(completed));
+    expect(state.sound).toHaveBeenCalledTimes(1);
+    expect(inApp ? state.toast.mock.calls.length : TestNotification.sent.length).toBe(1);
+    state.shells.set("one", shell());
+    state.shells.set(
+      "one",
+      shell({
+        latestTurn: {
+          turnId: "turn-2",
+          state: "completed",
+          completedAt: "2026-09-13T07:00:02.000Z",
+        },
+      }),
+    );
+    expect(state.sound).toHaveBeenCalledTimes(2);
+    expect(inApp ? state.toast.mock.calls.length : TestNotification.sent.length).toBe(2);
+    const allowSound = state.sound.mock.calls[1]![1] as () => boolean;
+    expect(allowSound()).toBe(true);
+    state.shells.set(
+      "one",
+      shell({
+        notificationsMuted: true,
+        latestTurn: {
+          turnId: "turn-2",
+          state: "completed",
+          completedAt: "2026-09-13T07:00:02.000Z",
+        },
+      }),
+    );
+    expect(allowSound()).toBe(false);
+    if (inApp) expect(state.closeToast).toHaveBeenCalledExactlyOnceWith("toast-2");
+    if (!inApp) {
+      expect(TestNotification.sent[1]!.close).toHaveBeenCalled();
+      expect(state.badge).toHaveBeenLastCalledWith(1);
+    }
+  },
+);
 
 it.each(["hasPendingApprovals", "hasPendingUserInput"] as const)(
   "notifies for offline completion and %s once across reconnects",
