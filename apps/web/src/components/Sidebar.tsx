@@ -2373,6 +2373,17 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       const settlingThreads = selectedThreads.filter(
         (thread) => thread.settledOverride !== "settled",
       );
+      const notificationThreads = selectedThreads.filter(
+        (thread) =>
+          serverConfigs.get(thread.environmentId)?.environment.capabilities
+            .threadNotificationMuting === true,
+      );
+      const unmutedThreads = notificationThreads.filter(
+        (thread) => thread.notificationsMuted !== true,
+      );
+      const mutedThreads = notificationThreads.filter(
+        (thread) => thread.notificationsMuted === true,
+      );
       const canSnoozeSelection = selectedThreads.every(
         (thread) =>
           serverConfigs.has(thread.environmentId) &&
@@ -2446,6 +2457,26 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 ]
               : []),
             { id: "mark-unread", label: gt("Mark unread ({count})", { count }) },
+            ...(unmutedThreads.length > 0
+              ? [
+                  {
+                    id: "mute-notifications",
+                    label: gt("Mute notifications ({count})", { count: unmutedThreads.length }),
+                    icon: "bell-off",
+                    disabled: !canOperateThreads(unmutedThreads),
+                  },
+                ]
+              : []),
+            ...(mutedThreads.length > 0
+              ? [
+                  {
+                    id: "unmute-notifications",
+                    label: gt("Unmute notifications ({count})", { count: mutedThreads.length }),
+                    icon: "bell",
+                    disabled: !canOperateThreads(mutedThreads),
+                  },
+                ]
+              : []),
             {
               id: "delete",
               label: gt("Delete ({count})", { count }),
@@ -2459,24 +2490,55 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       );
       if (clicked._tag === "Failure" || clicked.value === null) return;
       const actionTargets =
-        clicked.value === "unpin"
-          ? pinnedSelectedThreads
-          : clicked.value === "regenerate-title"
-            ? regeneratableTitleThreads
-            : clicked.value === "settle"
-              ? settlingThreads.flatMap((thread) => {
-                  const current = threadByKeyRef.current.get(
-                    scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-                  );
-                  return current && current.settledOverride !== "settled" ? [current] : [];
-                })
-              : selectedThreads;
+        clicked.value === "mute-notifications"
+          ? unmutedThreads
+          : clicked.value === "unmute-notifications"
+            ? mutedThreads
+            : clicked.value === "unpin"
+              ? pinnedSelectedThreads
+              : clicked.value === "regenerate-title"
+                ? regeneratableTitleThreads
+                : clicked.value === "settle"
+                  ? settlingThreads.flatMap((thread) => {
+                      const current = threadByKeyRef.current.get(
+                        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+                      );
+                      return current && current.settledOverride !== "settled" ? [current] : [];
+                    })
+                  : selectedThreads;
       if (clicked.value === "settle" && actionTargets.length === 0) return;
       if (
         clicked.value !== "mark-unread" &&
         !checkThreadOperations(actionTargets, isThreadTriageAction(clicked.value))
       )
         return;
+      if (clicked.value === "mute-notifications" || clicked.value === "unmute-notifications") {
+        const notificationsMuted = clicked.value === "mute-notifications";
+        const results = await Promise.all(
+          actionTargets.map((thread) =>
+            updateThreadMetadata({
+              environmentId: thread.environmentId,
+              input: { threadId: thread.id, notificationsMuted },
+            }),
+          ),
+        );
+        const failure = results.find(
+          (result) => result._tag === "Failure" && !isAtomCommandInterrupted(result),
+        );
+        if (failure?._tag === "Failure") {
+          const error = squashAtomCommandFailure(failure);
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "Failed to update thread notifications",
+              description: error instanceof Error ? error.message : "An error occurred.",
+            }),
+          );
+          return;
+        }
+        clearSelection();
+        return;
+      }
       if (clicked.value?.startsWith("snooze:")) {
         const preset =
           clicked.value === "snooze:custom"
@@ -2738,6 +2800,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               isPinned,
               isSettled,
               autoSettleEnabled: thread.autoSettleDisabledAt == null,
+              notificationsMuted: thread.notificationsMuted === true,
               isSnoozed,
               canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
               isRegeneratingTitle,
@@ -2754,6 +2817,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 snooze: configLoaded,
                 pinning: configLoaded,
                 titleRegeneration: configLoaded,
+                notificationMuting:
+                  serverConfigs.get(thread.environmentId)?.environment.capabilities
+                    .threadNotificationMuting === true,
               },
               snoozePresets,
             }),
@@ -2866,6 +2932,27 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                   type: "error",
                   title: gt("Failed to update auto-settle"),
                   description: thrownErrorMessage(error, m) ?? gt("An error occurred."),
+                }),
+              );
+            }
+            return;
+          }
+          case "mute-notifications":
+          case "unmute-notifications": {
+            const result = await updateThreadMetadata({
+              environmentId: threadRef.environmentId,
+              input: {
+                threadId: threadRef.threadId,
+                notificationsMuted: clicked.value === "mute-notifications",
+              },
+            });
+            if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+              const error = squashAtomCommandFailure(result);
+              toastManager.add(
+                stackedThreadToast({
+                  type: "error",
+                  title: "Failed to update thread notifications",
+                  description: error instanceof Error ? error.message : "An error occurred.",
                 }),
               );
             }

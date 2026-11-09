@@ -84,20 +84,25 @@ export function createThreadNotificationGate<Key>(
       key: Key,
       prior: ThreadNotificationObservation | undefined,
       next: ThreadNotificationObservation,
-      options: { readonly archived: boolean; readonly quiet: boolean; readonly snoozed: boolean },
+      options: {
+        readonly archived: boolean;
+        readonly quiet: boolean;
+        readonly snoozed: boolean;
+        readonly muted?: boolean;
+      },
     ): void {
       // The grace survives updates that keep the wake's completion; anything else cancels it.
       const pending = releases.get(key);
-      const silenced = options.archived || options.quiet || options.snoozed;
+      const silenced = options.archived || options.quiet || options.snoozed || options.muted;
       if (pending?.at === next.completedAt && !silenced) {
         if (pending.timer === undefined) release(key, pending.at);
         return;
       }
       cancel(key);
-      // The first sighting, archived or snoozed threads, and stopped or silent runs never notify completion.
+      // The first sighting, archived, snoozed or muted threads, and stopped or silent runs never notify completion.
       if (!prior || silenced) skip(key, next.completedAt);
       const fresh = attend(key, prior, next);
-      if (!prior || options.archived) return;
+      if (!prior || options.archived || options.muted) return;
       if (fresh) {
         notify(key, "input");
         return;

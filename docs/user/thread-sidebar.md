@@ -27,6 +27,7 @@ Threads don't require a project. Pick **No project** (or press `mod+alt+n` on we
 - **Drop files onto a thread** (web/desktop): Drag files from your computer onto any thread row to open it and attach them to its composer.
 - **Pin and reorder**: Pin a thread from its menu or drag threads between **Pinned**, **Active**, and **Settled** (or drag out of **Snoozed** to wake). On mobile, use **Arrange threads** or **Move up / Move down** in the thread menu. Custom order syncs across devices (requires an up-to-date server).
 - **Undo** (web/desktop): Unpinning, settling, snoozing, archiving, or discarding a draft shows a 5-second **Undo** toast (`mod+z`).
+- **Mute notifications**: Choose **Mute notifications** from a thread's menu to silence its sound, alerts and badge on every connected client, including mobile push and ongoing activity. A crossed-out bell marks muted threads; work and incoming agent messages continue. **Unmute notifications** restores future alerts without replaying muted completions. On web and desktop, a multi-selection's context menu mutes or unmutes several at once. Agents can mute and unmute threads too. This needs an environment server that supports thread notification muting.
 - **Titles**: Choose **Regenerate title** from a thread's menu, or customize title style in **Settings → Threads → Text generation → Thread title instructions** (global or per-project).
 
 ### Working section (beta)

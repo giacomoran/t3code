@@ -17,4 +17,5 @@ Get push alerts, Live Activities, and home-screen widgets on iOS and Android whe
 ## Notes
 
 - Ordinary alerts are muted while the mobile app is in the foreground, though viewing a thread on another device does not silence your phone.
+- To silence one thread on every device, choose **Mute notifications** from its thread-list menu (a crossed-out bell marks it). The thread keeps running; **Unmute notifications** restores alerts for future work. This needs an environment server that supports thread notification muting.
 - Force-stopping T3 Code in Android system Settings pauses push delivery until you reopen the app.

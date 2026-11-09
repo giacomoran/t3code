@@ -42,6 +42,7 @@ import {
   AlarmClockIcon,
   AlarmClockOffIcon,
   ArrowRightLeftIcon,
+  BellOffIcon,
   CheckIcon,
   CircleAlertIcon,
   CircleCheckIcon,
@@ -1283,6 +1284,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     )
   ) : null;
 
+  const muteIndicator =
+    thread.notificationsMuted === true ? (
+      <BellOffIcon
+        aria-label="Notifications muted"
+        role="img"
+        className="size-3 shrink-0 text-muted-foreground/65"
+      />
+    ) : null;
+
   const diff = latestRunDiff(thread);
   // Only the trailing icons would remain, so the row moves them to the title line instead.
   const metaLineEmpty =
@@ -1399,6 +1409,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             {title}
             {multiline ? titleLineIcons : null}
             {pinIndicator}
+            {muteIndicator}
             {multiline ? null : terminalStatusIcon}
             {multiline ? null : issueBadge}
             {isRegeneratingTitle ? (
@@ -1601,6 +1612,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             {/* Left of the status slot, the pin would slide when hover swaps the
                 label for the wider row controls. */}
             {pinIndicator}
+            {muteIndicator}
             {props.projectDisplayName ? (
               <span
                 className={cn("min-w-0 flex-1 truncate font-normal text-secondary-label text-xs")}

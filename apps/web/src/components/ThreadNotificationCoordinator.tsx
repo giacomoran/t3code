@@ -107,6 +107,17 @@ export function startThreadNotifications(
     const opened = threadKey({ environmentId, threadId });
     closeToasts((key) => key === opened);
   };
+  const closeThreadNotifications = (environmentId: EnvironmentId, threadId: ThreadId) => {
+    const muted = threadKey({ environmentId, threadId });
+    closeToasts((key) => key === muted);
+    const count = pending.size;
+    for (const [tag, entry] of pending) {
+      if (entry.environmentId !== environmentId || entry.threadId !== threadId) continue;
+      entry.notification.close();
+      pending.delete(tag);
+    }
+    if (count !== pending.size) setNotificationBadge(pending.size);
+  };
   // A notification shown before the tag filter turned on must not stay on screen. While hiding,
   // one whose thread left the live list (archived) cannot be judged, so it closes too.
   const closeHiddenPending = () => {
@@ -136,6 +147,7 @@ export function startThreadNotifications(
     kind: ThreadNotificationKind,
   ) => {
     const { thread, status } = state;
+    if (thread.notificationsMuted === true) return;
     if (
       registry
         .get(environmentThreadShells.hiddenThreadKeysAtom)
@@ -157,9 +169,14 @@ export function startThreadNotifications(
                 ? m(msg("Guest request"))
                 : m(msg("Input needed"));
     if (hasNotificationSound(mode)) {
-      void playNotificationSound(kind, () =>
-        hasNotificationSound(getClientSettings().notificationMode),
-      );
+      void playNotificationSound(kind, () => {
+        const current = watched.get(environmentId)?.previous.get(thread.id);
+        return (
+          current !== undefined &&
+          current.thread.notificationsMuted !== true &&
+          hasNotificationSound(getClientSettings().notificationMode)
+        );
+      });
     }
     if (
       inAppNotificationsEnabled &&
@@ -305,10 +322,14 @@ export function startThreadNotifications(
     entry.gate.retain(new Set(next.keys()));
     const now = Date.now();
     for (const [prior, state] of changed) {
+      if (state.thread.notificationsMuted === true) {
+        closeThreadNotifications(environmentId, state.thread.id);
+      }
       entry.gate.observe(state.thread.id, prior, state, {
         archived: state.thread.archivedAt !== null,
         quiet: state.raw.latestRunStopRequested === true,
         snoozed: isSnoozedForNotification(state.thread, state.completedAt, now),
+        muted: state.thread.notificationsMuted === true,
       });
     }
   };

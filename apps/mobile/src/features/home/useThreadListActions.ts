@@ -246,6 +246,10 @@ function confirmThreadDeletion(
 }
 
 export function useThreadListActions(): {
+  readonly setThreadNotificationsMuted: (
+    thread: EnvironmentThreadShell,
+    muted: boolean,
+  ) => Promise<boolean>;
   readonly archiveThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
   readonly confirmDeleteThread: (thread: EnvironmentThreadShell) => void;
   readonly settleThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
@@ -281,6 +285,33 @@ export function useThreadListActions(): {
   });
   const snoozeInFlightThreadKeys = useRef(new Set<string>());
   const titleRegenerationInFlightThreadKeys = useRef(new Set<string>());
+  const notificationMutingInFlightThreadKeys = useRef(new Set<string>());
+
+  const setThreadNotificationsMuted = async (thread: EnvironmentThreadShell, muted: boolean) => {
+    const failureTitle = "Could not change thread notifications";
+    if (!checkThreadOperationPermission(thread, failureTitle)) return false;
+    if (
+      appAtomRegistry.get(environmentServerConfigsAtom).get(thread.environmentId)?.environment
+        .capabilities.threadNotificationMuting !== true
+    ) {
+      Dialog.alert(failureTitle, "Update this environment's server to mute thread notifications.");
+      return false;
+    }
+    const key = scopedThreadKey(thread.environmentId, thread.id);
+    if (notificationMutingInFlightThreadKeys.current.has(key)) return false;
+    selectionHaptic();
+    notificationMutingInFlightThreadKeys.current.add(key);
+    const result = await updateThreadMetadata({
+      environmentId: thread.environmentId,
+      input: { threadId: thread.id, notificationsMuted: muted },
+    }).finally(() => notificationMutingInFlightThreadKeys.current.delete(key));
+    if (result._tag === "Failure") {
+      const error = Cause.squash(result.cause);
+      Dialog.alert(failureTitle, error instanceof Error ? error.message : "Try again.");
+      return false;
+    }
+    return true;
+  };
 
   const archiveThread = (thread: EnvironmentThreadShell) => executeAction("archive", thread);
   const offerUndo = (
@@ -839,6 +870,10 @@ export function useThreadListActions(): {
   return {
     archiveThread: useStableCallback((thread: EnvironmentThreadShell) =>
       archiveThread(liveThread(thread)),
+    ),
+    setThreadNotificationsMuted: useStableCallback(
+      (thread: EnvironmentThreadShell, muted: boolean) =>
+        setThreadNotificationsMuted(liveThread(thread), muted),
     ),
     confirmDeleteThread: useStableCallback((thread: EnvironmentThreadShell) =>
       confirmDeleteThread(liveThread(thread)),

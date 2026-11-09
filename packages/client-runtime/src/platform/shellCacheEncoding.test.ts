@@ -111,6 +111,7 @@ describe("cooperative shell cache encoding", () => {
         branch: "  main  ",
         activityRunStartedAt: index % 2 === 0 ? NOW : null,
         unsettledAt: index % 2 === 0 ? NOW : null,
+        notificationsMuted: index % 2 === 0,
         modelSelection: {
           instanceId: PROVIDER_INSTANCE_ID,
           model: "  gpt-5.4  ",
@@ -142,6 +143,8 @@ describe("cooperative shell cache encoding", () => {
       });
       expect(parsed.snapshot.threads[0].activityRunStartedAt).toBe(DateTime.formatIso(NOW));
       expect(parsed.snapshot.threads[1].activityRunStartedAt).toBeNull();
+      expect(parsed.snapshot.threads[0].notificationsMuted).toBe(true);
+      expect(parsed.snapshot.threads[1].notificationsMuted).toBe(false);
       expect(parsed.snapshot.archivedThreads[0].archivedAt).toBe(DateTime.formatIso(NOW));
     }),
   );

@@ -23,6 +23,8 @@ export type ThreadActionMenuId =
   | "rename"
   | "regenerate-title"
   | "mark-unread"
+  | "mute-notifications"
+  | "unmute-notifications"
   | "share-guest"
   | "copy"
   | "copy-path"
@@ -108,6 +110,7 @@ export interface ThreadActionMenuState {
   readonly isPinned: boolean;
   readonly isSettled: boolean;
   readonly autoSettleEnabled: boolean;
+  readonly notificationsMuted: boolean;
   readonly isSnoozed: boolean;
   readonly canSnoozeNow: boolean;
   readonly isRegeneratingTitle: boolean;
@@ -121,6 +124,7 @@ export interface ThreadActionMenuState {
     readonly snooze: boolean;
     readonly pinning: boolean;
     readonly titleRegeneration: boolean;
+    readonly notificationMuting: boolean;
   };
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
   /** Guest links need their own grant, so the caller checks it instead of `canOperate`. */
@@ -235,6 +239,21 @@ export function buildThreadActionMenuItems(
       : []),
     ...(state.hasCompletedRun && !state.isRunning
       ? [{ id: "mark-unread" as const, label: resolve(msg("Mark unread")), icon: "mail-open" }]
+      : []),
+    ...(state.supports.notificationMuting
+      ? [
+          state.notificationsMuted
+            ? {
+                id: "unmute-notifications" as const,
+                label: resolve(msg("Unmute notifications")),
+                icon: "bell",
+              }
+            : {
+                id: "mute-notifications" as const,
+                label: resolve(msg("Mute notifications")),
+                icon: "bell-off",
+              },
+        ]
       : []),
     ...(state.canShareWithGuest
       ? [{ id: "share-guest" as const, label: resolve(msg("Share with guest")), icon: "user-plus" }]

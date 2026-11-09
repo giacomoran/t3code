@@ -149,6 +149,10 @@ interface HomeScreenProps {
   ) => Promise<boolean>;
   readonly onRenameThread: (thread: EnvironmentThreadShell) => void;
   readonly onRegenerateThreadTitle: (thread: EnvironmentThreadShell) => Promise<boolean>;
+  readonly onSetThreadNotificationsMuted: (
+    thread: EnvironmentThreadShell,
+    muted: boolean,
+  ) => Promise<boolean>;
   readonly onSelectPendingTask: (pendingTask: PendingNewTask) => void;
   readonly onDeletePendingTask: (pendingTask: PendingNewTask) => void;
   readonly onNewThreadOnBranch: (thread: EnvironmentThreadShell) => void;
@@ -407,6 +411,7 @@ export function HomeScreen(props: HomeScreenProps) {
     snoozePresetsByEnvironmentId,
     pinningEnvironmentIds,
     autoSettleOptOutEnvironmentIds,
+    notificationMutingEnvironmentIds,
     pinReorderEnvironmentIds,
     activeReorderEnvironmentIds,
     titleRegenerationEnvironmentIds,
@@ -570,6 +575,8 @@ export function HomeScreen(props: HomeScreenProps) {
         onArchiveThread={props.onArchiveThread}
         onRenameThread={handleRenameThread}
         onRegenerateThreadTitle={handleRegenerateThreadTitle}
+        onSetThreadNotificationsMuted={props.onSetThreadNotificationsMuted}
+        notificationMutingSupported={notificationMutingEnvironmentIds.has(thread.environmentId)}
         titleRegenerationSupported={titleRegenerationEnvironmentIds.has(thread.environmentId)}
         settlementSupported={settlementEnvironmentIds.has(thread.environmentId)}
         onSettleThread={handleSettleThread}
