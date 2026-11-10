@@ -102,22 +102,22 @@ if test -f "$built/Contents/Resources/app-update.yml"
 end
 
 # ── Install ──────────────────────────────────────────────────────────────────
-set --local stamp (date +%Y%m%d-%H%M%S)
-if test -d "$installed"
-    echo "==> backing up current app"
-    mv "$installed" "/Applications/$app_name.$stamp.bak"; or exit 1
-end
-if test -d "$installed_legacy"
-    echo "==> backing up the pre-rename Alpha app"
-    mv "$installed_legacy" "$installed_legacy.$stamp.bak"; or exit 1
-end
+# Replace in place, keeping no backup. Copy first, so a failed copy leaves the
+# current app untouched.
+set --local incoming "/Applications/$app_name.incoming"
+rm -rf "$incoming"
 echo "==> installing"
-ditto "$built" "$installed"; or exit 1
+ditto "$built" "$incoming"; or begin; rm -rf "$incoming"; exit 1; end
+rm -rf "$installed"; or exit 1
+mv "$incoming" "$installed"; or exit 1
+if test -d "$installed_legacy"
+    echo "==> removing the pre-rename Alpha app"
+    rm -rf "$installed_legacy"; or exit 1
+end
 rm -rf $stage
 
 echo
 echo "installed: $installed"
-echo "previous:  /Applications/$app_name.$stamp.bak  (delete when happy, ~400MB)"
 echo
 echo "Quit T3 Code fully (Cmd-Q) and relaunch."
 echo "Confirm the fork: Settings → Appearance shows 'Chat font size'."
