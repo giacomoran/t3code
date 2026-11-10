@@ -357,8 +357,8 @@ the Linux CLI archive:
    for a pinned runtime, and switches the service with `--allow-downgrade`: a semver
    prerelease such as `0.0.45-zxtra.g…` sorts below `0.0.45`.
 
-The previous runtime stays in `~/.t3/runtime/versions`, and the script prints the
-command to roll back to it. **Don't run `t3 update` on the server**: it would replace the
+`t3 service install` prunes the previous runtime from `~/.t3/runtime/versions`, so
+rolling back means checking out `zxtra-pre-<tag>` and running the script again. **Don't run `t3 update` on the server**: it would replace the
 fork with an upstream release.
 
 Linux toolchain: Node and Rust from `.tool-versions` through mise (recreate it as in

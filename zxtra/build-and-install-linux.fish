@@ -141,7 +141,6 @@ end
 # install` reuses it instead of fetching a release.
 set --local t3_home $HOME/.t3
 set --local target_dir $t3_home/runtime/versions/$build_version
-set --local previous_version (string match -r '"activeVersion": "([^"]+)"' < $t3_home/runtime/service-state.json)[2]
 echo "==> installing to $target_dir"
 rm -rf $target_dir
 mv $unpacked $target_dir; or exit 1
@@ -157,7 +156,6 @@ rm -rf $stage
 
 echo
 echo "installed: t3 $build_version"
-echo "previous:  $previous_version (still in $t3_home/runtime/versions)"
-echo "roll back: ln -sfn $t3_home/runtime/versions/$previous_version/t3 ~/.local/bin/t3; and t3 service install"
+echo "roll back: check out the previous commit (zxtra-pre-<tag>) and run this script again"
 echo
 echo "Don't run `t3 update` here: it would replace the fork with an upstream release."
