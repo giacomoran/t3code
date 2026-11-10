@@ -141,8 +141,11 @@ installs on epsilon. It asks in the thread only for real decisions, such as an u
 feature that overlaps one of the fork's, so answer it whenever you see it. The install
 restarts the server the thread runs on, so `zxtra/install-linux-detached.fish` runs
 it in a transient systemd unit and reports the outcome to the thread as its next turn.
-Tiramisu may be off, so the thread ends with a message to paste to an agent there, which
-rebuilds the desktop app.
+The thread ends by starting a thread on tiramisu, through epsilon's link to it
+(`t3_environment_links`), in the project rooted at tiramisu's home directory. That thread
+resets tiramisu's checkout to `origin/zxtra` and runs `zxtra/build-and-install.fish`;
+quit and relaunch the app when it says so. When tiramisu is off or unlinked, the update
+thread posts the same instructions as a message to paste to an agent there.
 
 One release at a time: the script records each thread's id in
 `~/.local/state/t3code-fork-update/<tag>`, and starts no new thread while one whose tag
