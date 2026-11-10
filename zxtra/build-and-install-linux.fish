@@ -114,7 +114,7 @@ end
 set --local unpacked $stage/unpacked
 mkdir -p $unpacked
 tar -xzf $archive -C $unpacked --strip-components=1; or exit 1
-for marker in quota_reserve
+for marker in notifications-muted
     if not grep -qa $marker $unpacked/t3
         echo "built executable is missing '$marker' — refusing to install"
         exit 1
