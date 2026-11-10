@@ -1,6 +1,6 @@
 Upstream T3 Code published the stable release {{tag}}. Update this fork to it:
-rebase `zxtra` onto {{tag}}, push it, install it on epsilon, then hand the
-macOS build on tiramisu over to me.
+rebase `zxtra` onto {{tag}}, push it, install it on epsilon, then start a
+thread on tiramisu that builds and installs the macOS app.
 
 You run on epsilon, in `~/Projects/t3code`, the checkout epsilon's T3 Code
 server is built from, and on that server. `zxtra/watch-stable-release.fish`
@@ -31,8 +31,8 @@ meanwhile.
 6. Compare `ORCHESTRATION_PROTOCOL_VERSION` in
    `packages/contracts/src/environment.ts` between `zxtra-pre-{{tag}}` and
    `zxtra`. If it changed, the desktop app on tiramisu cannot reach epsilon
-   from the moment one of them is updated until the other one is: post the
-   handoff (step 9) first, and install here only once I say so.
+   from the moment one of them is updated until the other one is: start the
+   tiramisu thread (step 10) first, and install here only once I say so.
 7. Install on epsilon: `./zxtra/install-linux-detached.fish <your thread id>`.
    It restarts this server at the end, so it runs in the background, and you
    get a message with its outcome as your next turn: end your turn once it
@@ -44,23 +44,34 @@ meanwhile.
    then `gh release view <tag> -R pingdotgg/t3code` for each. Read its
    Highlights and Fixes; skim the full changelog only for what changes how I
    use the app.
-9. Report, then end. Its first section is "What's new upstream": the notes
+9. Report. Its first section is "What's new upstream": the notes
    grouped by release, newest first, a few plain bullets each, new features
    first, then fixes that matter, then anything I need to do (such as a new
    setting to turn on), with the upstream PR number where the notes give one.
    Then what upstream changed that touches the fork, each
    conflict and how you resolved it, the commits you added, and what you
-   checked. Then, in one fenced block, a message I can paste to an agent on
-   tiramisu. It tells that agent to:
-   - in `~/Projects/zxtra/t3code`, check the tree is clean and that local
-     `zxtra` is `origin/zxtra`'s old commit (name it), so no work there is
-     lost, and stop and ask me if not;
-   - `git fetch origin`, `git branch zxtra-pre-{{tag}} zxtra`,
-     `git reset --hard origin/zxtra`, `pnpm install`, `pnpm tc`, then
-     `./zxtra/build-and-install.fish`;
-   - tell me to quit T3 Code (Cmd-Q) and relaunch it, and to check that
-     Settings → Appearance shows Chat font size.
+   checked, and the tiramisu thread's link (step 10).
+10. Start the tiramisu thread, then end. Find tiramisu with
+    `t3_environment_links` (label "Tiramisu") and, with `t3_project_list` on it,
+    the project whose root contains `~/Projects/zxtra/t3code` (today "Zxtra",
+    rooted at the home directory). Start a thread there with `t3_thread_launch`
+    (`environmentId`, `projectId`, `clientRequestId: zxtra-{{tag}}-tiramisu`) whose
+    message tells that agent:
 
-   Add to the message anything tiramisu needs that epsilon did not, such as a
-   new pairing when the app gained a scope (`ZXTRA.md` → Running the fork's
-   server on Linux).
+- it runs inside the desktop app it replaces; the install swaps the bundle
+  while it runs, and it must not quit or restart the app itself;
+- in `~/Projects/zxtra/t3code`, check the tree is clean and that local
+  `zxtra` is `origin/zxtra`'s old commit (name it), so no work there is
+  lost, and stop and ask me if not;
+- `git fetch origin`, `git branch zxtra-pre-{{tag}} zxtra`,
+  `git reset --hard origin/zxtra`, `pnpm install`, `pnpm tc`, then
+  `./zxtra/build-and-install.fish`; fix failures local to the Mac, but stop
+  and tell me if a fix needs a code change, which belongs on epsilon;
+- end by telling me to quit T3 Code (Cmd-Q) and relaunch it, and to check
+  that Settings → Appearance shows Chat font size.
+
+Add anything tiramisu needs that epsilon did not, such as a new pairing
+when the app gained a scope (`ZXTRA.md` → Running the fork's server on
+Linux), and what changed in the fork's features. If tiramisu is not linked
+or not reachable, or the launch fails, put that message in one fenced block
+in the report instead, for me to paste to an agent there, and say why.
