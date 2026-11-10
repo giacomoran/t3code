@@ -209,11 +209,8 @@ export type TerminalFontSize = typeof TerminalFontSize.Type;
 const DEFAULT_TERMINAL_FONT_SIZE: TerminalFontSize = 12;
 
 /**
- * A named model setup: the provider instance, the model, and every trait
- * (reasoning effort, fast mode, …) captured together so one click restores
- * the whole combination. Structurally a `ModelSelection` plus an id and a
- * label — kept as its own schema because profiles are user-authored records
- * with stable ids, not a transient selection.
+ * A named provider instance, model and traits that one click restores. Its own
+ * schema rather than a `ModelSelection`: profiles are user records with stable ids.
  */
 export const MAX_MODEL_PROFILES = 24;
 export const MODEL_PROFILE_NAME_MAX_LENGTH = 40;

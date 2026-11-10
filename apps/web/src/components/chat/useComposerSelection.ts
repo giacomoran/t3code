@@ -196,13 +196,9 @@ export function useComposerSelection(input: ComposerSelectionInput) {
   };
   const onProviderModelSelectStable = useStableCallback(onProviderModelSelect);
   /**
-   * Apply a saved profile: the model *and* every trait in one write.
-   *
-   * Model changes route through `onProviderModelSelect` so the provider lock,
-   * continuation-group and started-thread guards all still apply; the traits
-   * then land with `replaceOptions` because a profile is a complete snapshot,
-   * not a partial edit — a profile with no traits must clear the ones the
-   * previous setup left behind rather than inherit them.
+   * The model goes through `onProviderModelSelect` so its provider-lock and
+   * started-thread guards apply. Traits are replaced, not merged: a profile with
+   * no traits clears the previous setup's.
    */
   const onApplyModelProfile = (profile: ModelProfile) => {
     if (!activeThread) return;
