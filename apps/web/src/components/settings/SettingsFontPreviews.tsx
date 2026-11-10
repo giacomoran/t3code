@@ -58,7 +58,7 @@ export function PromptFontPreview() {
 // Assistant prose the way the transcript renders it: a paragraph, a list, and
 // inline code spans, so the size choice is judged on real text.
 const CHAT_PREVIEW_TEXT = [
-  "Rebased onto `upstream/main` and re-ran the suite — all green.",
+  "Rebased onto `upstream/main` and re-ran the suite: all green.",
   "",
   "- Cache hit rate rose from 62% to 94%",
   "- The p95 for `resolveModel` dropped below 5ms",
