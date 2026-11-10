@@ -599,7 +599,12 @@ export const make = Effect.gen(function* () {
       mutedRunByThread.get(threadId) === threadShell?.latestRunId;
     const suppressNotifications = threadShell?.notificationsMuted === true || mutedCompletion;
     const snapshot = suppressNotifications
-      ? { ...projectedSnapshot, state: null, subagentWait: null, reason: "notifications-muted" as const }
+      ? {
+          ...projectedSnapshot,
+          state: null,
+          subagentWait: null,
+          reason: "notifications-muted" as const,
+        }
       : projectedSnapshot;
     const publishIdentity = agentAwarenessPublishIdentity(snapshot.state, snapshot.subagentWait);
     const publishedStateByThread = yield* Ref.get(publishedStateByThreadRef);
