@@ -203,9 +203,9 @@ tell the builds apart.
 
 `zxtra/build-and-install.fish` refuses to install a bundle that is missing the fork's
 own code, or one that arrived carrying an update feed, so a botched build cannot
-quietly replace a working app. It backs the current app up to
-`/Applications/T3 Code (Beta).app.<timestamp>.bak`; delete those once you are happy,
-they are ~400MB each.
+quietly replace a working app. It replaces the installed app in place and keeps no
+backup: it copies the new bundle next to it first, so a failed copy leaves the old app
+working. To go back, check out `zxtra-pre-<tag>` and run the script again.
 
 ### What tends to conflict
 
