@@ -63,41 +63,36 @@ stops on a modify/delete conflict: keep it deleted.
 `MessagesTimeline` still declares `onCiteAssistantText` so its callers upstream keep
 compiling unchanged. It is never read.
 
-### 4. Claude and Codex quota reserves
-
-`Settings → Providers → Claude → Quota reserve (%)` (and the same for Codex) reserves
-`1`–`99` percent of the five-hour subscription window; an empty field disables it.
-Once usage reaches the threshold, new turns on that provider instance are failed
-before they reach the provider, and running turns are interrupted. Both end as a
-`usage_limit` failure carrying the window's reset time, so upstream's own limit
-banner, queue hold, Continue, snooze and auto-resume at reset all apply unchanged.
-`/reserve`, Continue, or auto-resume on a reserve stop lets that one thread spend
-the reserve until the window resets; the blocked prompt is replayed by upstream's
-missed-run handoff. See [Claude](docs/user/providers-claude.md#keep-a-quota-reserve)
-and [Codex](docs/user/providers-codex.md#keep-a-quota-reserve).
-
-Inspired by [spare10](https://github.com/alesdi/spare10). The guard reads the same
-per-instance usage snapshot as Stats, which the V2 adapters already update from
-streamed rate-limit events; it never probes an agent. Missing or stale readings log
-a warning once and let work continue.
-
-The logic lives in `apps/server/src/orchestration-v2/quotaReserve/`: the shared
-state and evaluation, a provider-adapter registry decorator that tracks running
-turns and turns a reserve-triggered interrupt into the failure (ordinary stops pass
-through), a monitor that reacts to snapshot changes plus the 5s scheduler tick, and
-a `ThreadManagementService` decorator for `/reserve` and continuations.
-`QuotaReserve` is a `Context.Reference` with a no-op default so upstream tests that
-build `ProviderTurnStartService` need no changes — which also means a wiring
-mistake in `runtimeLayer.ts` disables the feature silently instead of failing to
-compile.
-
-### 5. An empty list marker that starts a list stays
+### 4. An empty list marker that starts a list stays
 
 In the composer, Enter on an empty item continues or exits a list. Upstream removes the
 marker when the item is empty, which is right for an item continuation just inserted, but
 wrong for a `1. ` or `- ` typed on purpose at the top of a list. The marker is now removed
 only when the line above is also a list item; otherwise Enter is a plain newline. Upstream
 covers the no-space case (`1.`) since v0.1.1; this covers the rest.
+
+### 5. Per-thread notification muting
+
+A thread's menu has **Mute notifications** / **Unmute notifications**, also for a
+multi-selection on web and desktop, and through the MCP thread-metadata tools for
+agents. A muted thread plays no sound, raises no alert or badge, and sends no mobile
+push or live activity; its work continues. Unmuting does not replay a completion that
+finished while muted. See [Thread sidebar](docs/user/thread-sidebar.md#mute-thread-notifications).
+
+The flag is `notificationsMuted` on the thread, set through `thread.metadata.update` and
+advertised to clients through the `threadNotificationMuting` environment capability.
+Clients suppress their own sound and badge in `ThreadNotificationCoordinator`; the
+server's `AgentAwarenessRelay` withholds push and live activity. The relay reads a
+narrowed thread record (`AgentAwarenessThread` in `ProjectionStore.ts`), so the flag
+has to be carried there too: without it, muted threads alert the phone again with no
+type error.
+
+### Dropped: Claude and Codex quota reserves
+
+Until v0.1.8 the fork could stop a provider's turns once its five-hour quota reached a set
+percentage, with `/reserve` to spend the rest. It went unused and was the fork's largest
+server-side patch, so it was dropped on that rebase. Its commits are on
+`zxtra-with-quota-v0.1.8` should it be wanted back.
 
 ### Dropped: math (LaTeX) in chat
 
@@ -116,14 +111,14 @@ Updating is: rebase, rebuild, reinstall.
 On epsilon a timer does this by itself for each stable release, in a thread you
 answer when it needs a decision — see
 [Updating on each stable release](#updating-on-each-stable-release). By hand, with the
-release's tag (here `v0.1.7`):
+release's tag (here `v0.1.8`):
 
 ```fish
 cd ~/Projects/zxtra/t3code
 git fetch upstream --tags
-ZXTRA_UPSTREAM_REF=v0.1.7 ./zxtra/check-upstream.fish   # pre-flight: read this before deciding
-git branch zxtra-pre-v0.1.7 zxtra                        # backup
-git rebase v0.1.7 zxtra
+ZXTRA_UPSTREAM_REF=v0.1.8 ./zxtra/check-upstream.fish   # pre-flight: read this before deciding
+git branch zxtra-pre-v0.1.8 zxtra                        # backup
+git rebase v0.1.8 zxtra
 pnpm install                     # only when the lockfile moved
 pnpm tc                          # sanity-check the rebase before building
 ./zxtra/build-and-install.fish   # build, sign, back up, install
@@ -216,35 +211,43 @@ files upstream does not have, which never conflict:
 
 - `apps/web/src/modelProfiles.ts`
 - `apps/web/src/components/chat/ModelProfilesBar.tsx`
-- `apps/server/src/orchestration-v2/quotaReserve/*`
+- `evals/mcp-tool-use/cases/thread-notifications.ndjson`
 
 Only these upstream files are modified, each in one or two spots:
 
-| File                                                           | Why                                  |
-| -------------------------------------------------------------- | ------------------------------------ |
-| `packages/contracts/src/settings.ts`                           | new settings + `ModelProfile` schema |
-| `apps/web/src/appearanceFonts.ts`                              | `--font-size-chat` variable          |
-| `apps/web/src/appInit.tsx`                                     | applies the chat size                |
-| `apps/web/src/components/ChatMarkdown.tsx`                     | applies the chat size                |
-| `apps/web/src/components/settings/TypographySettings.tsx`      | Appearance rows                      |
-| `apps/web/src/components/settings/SettingsPanels.tsx`          | restores the chat size to default    |
-| `apps/web/src/components/settings/SettingsFontPreviews.tsx`    | chat font preview                    |
-| `apps/web/src/components/settings/settingsSearch.ts`           | makes the rows searchable            |
-| `apps/web/src/components/chat/ChatComposer.tsx`                | passes profiles to the footer        |
-| `apps/web/src/components/chat/ComposerControlsBar.tsx`         | renders the profiles dropdown        |
-| `apps/web/src/components/chat/useComposerSelection.ts`         | applies a profile                    |
-| `apps/web/src/components/ChatView.tsx`                         | wires the apply callback             |
-| `apps/web/src/components/chat/MessagesTimeline.tsx`            | drops the cite-selection button      |
-| `apps/web/src/components/chat/AssistantSelectionToolbar.tsx`   | deleted with the cite button         |
-| `apps/web/src/lib/selectionActions.ts`                         | drops a helper only it used          |
-| `apps/web/src/composer-list-continuation.ts`                   | keeps a list-starting empty marker   |
-| `apps/server/src/orchestration-v2/ProviderTurnStartService.ts` | quota gate before a turn starts      |
-| `apps/server/src/orchestration-v2/runtimeLayer.ts`             | wires the quota decorators           |
-| `apps/server/src/provider/ClaudeProvider.ts`                   | `/reserve` slash command             |
-| `apps/server/src/provider/CodexProvider.ts`                    | `/reserve` slash command             |
+| File                                                         | Why                                  |
+| ------------------------------------------------------------ | ------------------------------------ |
+| `packages/contracts/src/settings.ts`                         | new settings + `ModelProfile` schema |
+| `apps/web/src/appearanceFonts.ts`                            | `--font-size-chat` variable          |
+| `apps/web/src/index.css`, `apps/web/src/lib/utils.ts`        | `text-chat` size token               |
+| `apps/web/src/appInit.tsx`                                   | applies the chat size                |
+| `apps/web/src/components/ChatMarkdown.tsx`                   | applies the chat size                |
+| `apps/web/src/components/settings/TypographySettings.tsx`    | Appearance rows                      |
+| `apps/web/src/components/settings/SettingsPanels.tsx`        | restores the chat size to default    |
+| `apps/web/src/components/settings/SettingsFontPreviews.tsx`  | chat font preview                    |
+| `apps/web/src/components/settings/settingsSearch.ts`         | makes the rows searchable            |
+| `apps/web/src/components/chat/ChatComposer.tsx`              | passes profiles to the footer        |
+| `apps/web/src/components/chat/ComposerControlsBar.tsx`       | renders the profiles dropdown        |
+| `apps/web/src/components/chat/useComposerSelection.ts`       | applies a profile                    |
+| `apps/web/src/components/ChatView.tsx`                       | wires the apply callback             |
+| `apps/web/src/components/chat/MessagesTimeline.tsx`          | drops the cite-selection button      |
+| `apps/web/src/components/chat/AssistantSelectionToolbar.tsx` | deleted with the cite button         |
+| `apps/web/src/lib/selectionActions.ts`                       | drops a helper only it used          |
+| `apps/web/src/composer-list-continuation.ts`                 | keeps a list-starting empty marker   |
 
-If a rebase conflicts, it will almost always be one of the small hunks in the table
-above.
+Notification muting touches many more, in one or two lines each: the thread
+contracts (`orchestrationV2.ts`, `environment.ts`, `orchestratorMcp.ts`,
+`threadMetadataMcp.ts`), the orchestrator, projection store, relay and MCP services
+on the server, the web sidebar, thread menu and notification coordinator, the mobile
+thread list and `AppSymbol.android.tsx`, and `client-runtime` commands and models.
+`git show <muting commit> --stat` lists them.
+
+If a rebase conflicts, it will almost always be one of these small hunks.
+
+Upstream's lint and Effect diagnostics also tighten between releases (comment length,
+arbitrary Tailwind values, em dashes in copy, `Effect.fn` over `Effect.gen` wrappers),
+and the pre-commit hook enforces them, so after a rebase run `vp lint` on the files
+the fork touches before committing fixes.
 
 ## Toolchain
 
@@ -343,7 +346,7 @@ the Linux CLI archive:
    the binary reports, so the fork needs a version of its own.
 2. Builds the web client and server bundle, the Rust resource monitor, and the single
    executable. The executable step runs on `engines.node` from the root `package.json`
-   (26.12.1 at v0.1.7, installed through mise), because `vp pack` needs a Node 25.7+ host
+   (26.12.1 at v0.1.8, installed through mise), because `vp pack` needs a Node 25.7+ host
    and `apps/server/vite.config.ts` refuses any other version.
 3. Packs the CLI archive, then refuses to install it if it lacks the fork's markers or
    reports the wrong version.
