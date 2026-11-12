@@ -349,7 +349,7 @@ the Linux CLI archive:
    the binary reports, so the fork needs a version of its own.
 2. Builds the web client and server bundle, the Rust resource monitor, and the single
    executable. The executable step runs on `engines.node` from the root `package.json`
-   (26.12.1 at v0.1.8, installed through mise), because `vp pack` needs a Node 25.7+ host
+   (26.12.1 at v0.1.9, installed through mise), because `vp pack` needs a Node 25.7+ host
    and `apps/server/vite.config.ts` refuses any other version.
 3. Packs the CLI archive, then refuses to install it if it lacks the fork's markers or
    reports the wrong version.
@@ -389,8 +389,11 @@ Checks:
 pnpm tc                                     # typecheck (whole repo)
 cd apps/web; and pnpm test; and cd -
 cd packages/contracts; and pnpm test; and cd -
-cd apps/server; and pnpm test; and cd -     # AgentSessionScanner.test.ts fails upstream too
+cd apps/server; and pnpm test; and cd -
 ```
+
+On the pinned Node 24, one server test fails upstream too: `ProjectionStore.test.ts`'s
+turn-item window test calls `StatementSync.stat`, which only Node 26 has.
 
 The web suite's browser tests can time out under the load of a full run; re-run a failing
 file alone before suspecting it, and run what still fails on the release tag itself.
