@@ -26,7 +26,11 @@ const woke = (at: number): ThreadNotificationObservation => ({
   ...completed(at),
   backgroundWake: true,
 });
-const visible = { archived: false, quiet: false, snoozed: false };
+const visible: { archived: boolean; quiet: boolean; snoozed: boolean; muted?: boolean } = {
+  archived: false,
+  quiet: false,
+  snoozed: false,
+};
 const snoozed = { ...visible, snoozed: true };
 
 function fakeTimers(): Disposable {
