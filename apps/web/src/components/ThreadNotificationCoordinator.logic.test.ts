@@ -25,7 +25,10 @@ const woke = (at: number): ThreadNotificationObservation => ({
   ...completed(at),
   backgroundWake: true,
 });
-const visible = { archived: false, quiet: false };
+const visible: { archived: boolean; quiet: boolean; muted?: boolean } = {
+  archived: false,
+  quiet: false,
+};
 
 function fakeTimers(): Disposable {
   vi.useFakeTimers();
