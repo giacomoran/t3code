@@ -60,9 +60,11 @@ meanwhile.
 
 - it runs inside the desktop app it replaces; the install swaps the bundle
   while it runs, and it must not quit or restart the app itself;
-- in `~/Projects/zxtra/t3code`, check the tree is clean and that local
-  `zxtra` is `origin/zxtra`'s old commit (name it), so no work there is
-  lost, and stop and ask me if not;
+- in `~/Projects/zxtra/t3code`, before fetching, check the tree is clean
+  and `git log origin/zxtra..zxtra` is empty, so no work there is lost, and
+  stop and ask me if not. Local `zxtra` may sit behind `origin/zxtra`'s old
+  commit (name it): tiramisu fetches only when it installs, so it can miss
+  commits pushed between releases, and that is fine;
 - `git fetch origin`, `git branch zxtra-pre-{{tag}} zxtra`,
   `git reset --hard origin/zxtra`, `pnpm install`, `pnpm tc`, then
   `./zxtra/build-and-install.fish`; fix failures local to the Mac, but stop
