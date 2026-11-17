@@ -51,14 +51,15 @@ Removed. Selecting text in an assistant message popped up a floating **Cite** bu
 that attached the selection to the composer as a quoted citation — an affordance that
 appears on every selection, including the ones made to copy a line or just to read.
 
-Only the button is gone: its mount point in `MessagesTimeline` and its component,
-`AssistantSelectionToolbar.tsx`, which nothing else imports (knip fails the pre-commit
-hook on an unused file). The rest of upstream's citation machinery — the composer
+Only the button is gone: its mount point in `MessagesTimeline`, its component,
+`AssistantSelectionToolbar.tsx`, and the selection helpers in `selectionActions.ts` that
+only it called (knip fails the pre-commit hook on an unused file or export). The rest of upstream's citation machinery — the composer
 chip, the citation node, the anchors that mark assistant text as citable — is left
 untouched and simply has nothing left to trigger it. Removing that too would mean
 editing the composer, the prompt editor, and the timeline plumbing, which is a large
 fork surface for no visible gain. If upstream edits the deleted component, the rebase
-stops on a modify/delete conflict: keep it deleted.
+stops on a modify/delete conflict: keep it deleted. An upstream test that expects the Cite button
+(`MessagesTimeline.browser.test.tsx`) is deleted with it.
 
 `MessagesTimeline` still declares `onCiteAssistantText` so its callers upstream keep
 compiling unchanged. It is never read.
@@ -235,7 +236,7 @@ Only these upstream files are modified, each in one or two spots:
 | `apps/web/src/components/ChatView.tsx`                       | wires the apply callback             |
 | `apps/web/src/components/chat/MessagesTimeline.tsx`          | drops the cite-selection button      |
 | `apps/web/src/components/chat/AssistantSelectionToolbar.tsx` | deleted with the cite button         |
-| `apps/web/src/lib/selectionActions.ts`                       | drops a helper only it used          |
+| `apps/web/src/lib/selectionActions.ts`                       | drops the helpers only it used       |
 | `apps/web/src/composer-list-continuation.ts`                 | keeps a list-starting empty marker   |
 
 Notification muting touches many more, in one or two lines each: the thread
@@ -349,7 +350,7 @@ the Linux CLI archive:
    the binary reports, so the fork needs a version of its own.
 2. Builds the web client and server bundle, the Rust resource monitor, and the single
    executable. The executable step runs on `engines.node` from the root `package.json`
-   (26.12.1 at v0.1.9, installed through mise), because `vp pack` needs a Node 25.7+ host
+   (26.13.1 at v0.1.10, installed through mise), because `vp pack` needs a Node 25.7+ host
    and `apps/server/vite.config.ts` refuses any other version.
 3. Packs the CLI archive, then refuses to install it if it lacks the fork's markers or
    reports the wrong version.
@@ -392,8 +393,11 @@ cd packages/contracts; and pnpm test; and cd -
 cd apps/server; and pnpm test; and cd -
 ```
 
-On the pinned Node 24, one server test fails upstream too: `ProjectionStore.test.ts`'s
-turn-item window test calls `StatementSync.stat`, which only Node 26 has.
+On the pinned Node 24, some server tests fail upstream too, because they call APIs only
+Node 25+ has (`StatementSync.stat`, `Uint8Array.fromBase64`): at v0.1.10, the turn-item
+window test in `ProjectionStore.test.ts`, one in `Orchestrator.control-reads.test.ts` and
+the recording tests in `ServerBrowser.test.ts`. Rerun them with
+`mise exec node@<engines.node> -- pnpm exec vp test run <files>` before suspecting the fork.
 
 The web suite's browser tests can time out under the load of a full run; re-run a failing
 file alone before suspecting it, and run what still fails on the release tag itself.
