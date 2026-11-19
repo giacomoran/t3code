@@ -51,6 +51,16 @@ meanwhile.
    Then what upstream changed that touches the fork, each
    conflict and how you resolved it, the commits you added, and what you
    checked, and the tiramisu thread's link (step 10).
+   Also say whether {{tag}} fixes these upstream issues, which my
+   ai-saldatura agents' notes work around: pingdotgg/t3code#27004 (a
+   `t3_thread_launch` on a linked environment that gets `delegatedFrom` is
+   hidden from the sidebar and the parent's Lineage panel) and #26293 (a
+   thread launched at a lower runtime mode cannot report to its launcher).
+   Check each with `gh issue view <n> -R pingdotgg/t3code --json state` and
+   the release notes you read in step 8. For one that is fixed, give me a
+   sentence to paste to an agent in ai-saldatura, naming the paragraph of its
+   `docs/t3-code.md` section "Launch a thread that reports back" to drop;
+   do not edit that repository.
 10. Start the tiramisu thread, then end. Find tiramisu with
     `t3_environment_links` (label "Tiramisu") and, with `t3_project_list` on it,
     the project whose root contains `~/Projects/zxtra/t3code` (today "Zxtra",
