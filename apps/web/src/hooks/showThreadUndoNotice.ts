@@ -17,6 +17,8 @@ import * as ThreadUndo from "@t3tools/client-runtime/state/thread-undo";
 
 type UndoOptions = {
   action: "Settled" | "Snoozed" | "Unpinned" | "Archived" | "Discarded";
+  /** Completes the summary, as in "Snoozed 1 thread until 2 threads settle". */
+  detail?: string;
   undo: () => Promise<AtomCommandResult<unknown, unknown>>;
   failureTitle: string;
   claim: ReturnType<typeof ThreadUndo.begin>;
@@ -25,6 +27,7 @@ type UndoOptions = {
 
 type UndoNotice = {
   action: UndoOptions["action"];
+  detail?: string;
   count: number;
   undo: () => Promise<void>;
 };
@@ -47,8 +50,9 @@ const UNDONE = {
   Discarded: msg("Undid discard of {count, plural, one {{count} draft} other {{count} drafts}}"),
 } satisfies Record<UndoOptions["action"], string>;
 
-function threadUndoNoticeSummary(notice: Pick<UndoNotice, "action" | "count">): string {
-  return m(SUMMARY[notice.action], { count: notice.count });
+function threadUndoNoticeSummary(notice: Pick<UndoNotice, "action" | "detail" | "count">): string {
+  const summary = m(SUMMARY[notice.action], { count: notice.count });
+  return notice.detail === undefined ? summary : `${summary} ${notice.detail}`;
 }
 
 /** Components pass `useMessages()` so the label follows a language switch. */
@@ -97,11 +101,12 @@ function refreshNotice() {
   const group: UndoOptions[] = [];
   for (let index = liveUndos.length - 1; index >= 0; index--) {
     const entry = liveUndos[index]!;
-    if (entry.action !== latest.action) break;
+    if (entry.action !== latest.action || entry.detail !== latest.detail) break;
     group.push(entry);
   }
   setNotice({
     action: latest.action,
+    ...(latest.detail === undefined ? {} : { detail: latest.detail }),
     count: group.length,
     undo: async () => {
       const current = group.filter((entry) => liveUndos.includes(entry) && entry.claim.isCurrent());

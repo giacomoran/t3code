@@ -35,6 +35,9 @@ function recordEffect(action: string) {
 }
 
 vi.mock("../components/CustomSnoozeDialog", () => ({ requestCustomSnooze: vi.fn() }));
+vi.mock("../components/SnoozeUntilSettledDialog", () => ({
+  requestSnoozeUntilSettled: vi.fn(),
+}));
 vi.mock("react", () => ({
   useCallback: (callback: unknown) => callback,
   useMemo: (factory: () => unknown) => factory(),
@@ -51,6 +54,7 @@ vi.mock("../state/entities", () => ({
   readEnvironmentServerConfigLoaded: () => true,
   readEnvironmentSupportsAutoSettleOptOut: () => true,
   readEnvironmentSupportsNotificationMuting: () => true,
+  readEnvironmentSupportsSnoozeUntilSettled: () => true,
   readThreadShell: () => ({
     id: "thread",
     environmentId: "secondary",

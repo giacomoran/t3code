@@ -1,6 +1,7 @@
 import * as WorktreeBranchSync from "./WorktreeBranchSync.ts";
 import * as GuestShareService from "../guest/GuestShareService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
+import * as SnoozeUntilSettledWorker from "./SnoozeUntilSettledWorker.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as Layer from "effect/Layer";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
@@ -457,6 +458,9 @@ export const layerProduction = Layer.mergeAll(
         layerOrchestratorProvided,
       ),
     ),
+  ),
+  SnoozeUntilSettledWorker.layer.pipe(
+    Layer.provide(Layer.mergeAll(ProjectionStore.layer, layerEventSink, layerOrchestratorProvided)),
   ),
   layerProviderContinuationWorkerProvided,
   layerAgentSessionScannerProvided,

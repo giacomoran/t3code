@@ -98,6 +98,7 @@ function applySettle(
         pinOrderKey: null,
         snoozedAt: null,
         snoozedUntil: null,
+        snoozeUntilSettledThreadIds: null,
       };
 }
 
@@ -106,6 +107,7 @@ function applySnooze(
   snoozedUntil: string,
   now: DateTime.Utc,
   accepted: boolean,
+  untilSettledThreadIds?: OrchestrationV2ThreadShell["snoozeUntilSettledThreadIds"],
 ): OrchestrationV2ThreadShell {
   return (!accepted &&
     ((thread.pendingRuntimeRequest !== null &&
@@ -117,6 +119,7 @@ function applySnooze(
         ...thread,
         snoozedUntil: DateTime.makeUnsafe(snoozedUntil),
         snoozedAt: now,
+        snoozeUntilSettledThreadIds: untilSettledThreadIds ?? null,
       };
 }
 
@@ -560,6 +563,19 @@ export function createThreadEnvironmentAtoms<R, E>(
           }),
   });
   const optimistic = createOptimisticThreadLifecycle(triage.snapshotAtom);
+  const queuedSnooze = triage.queueWhenOffline(commands.snooze, (input) => ({
+    type: "snooze" as const,
+    snoozedUntil: input.snoozedUntil,
+  }));
+  // A queued entry cannot carry the threads a snooze waits on, so that snooze is sent only online.
+  const snoozeQueuedWhenOffline: typeof commands.snooze = {
+    label: commands.snooze.label,
+    run: (registry, target) =>
+      (target.input.untilSettledThreadIds?.length ? commands.snooze : queuedSnooze).run(
+        registry,
+        target,
+      ),
+  };
   const settle = optimistic.wrap(commands.settle, (thread, _input, now, accepted) =>
     applySettle(thread, now, accepted),
   );
@@ -623,18 +639,15 @@ export function createThreadEnvironmentAtoms<R, E>(
       })),
       "settle",
     ),
-    snooze: optimistic.wrap(
-      triage.queueWhenOffline(commands.snooze, (input) => ({
-        type: "snooze" as const,
-        snoozedUntil: input.snoozedUntil,
-      })),
-      (thread, input, now, accepted) => applySnooze(thread, input.snoozedUntil, now, accepted),
+    snooze: optimistic.wrap(snoozeQueuedWhenOffline, (thread, input, now, accepted) =>
+      applySnooze(thread, input.snoozedUntil, now, accepted, input.untilSettledThreadIds),
     ),
     unsnooze: triage.cancelQueued(
       optimistic.wrap(commands.unsnooze, (thread) => ({
         ...thread,
         snoozedUntil: null,
         snoozedAt: null,
+        snoozeUntilSettledThreadIds: null,
       })),
       "snooze",
     ),
@@ -655,6 +668,7 @@ export function createThreadEnvironmentAtoms<R, E>(
         : {}),
       snoozedUntil: null,
       snoozedAt: null,
+      snoozeUntilSettledThreadIds: null,
     })),
     unpin: optimistic.wrap(commands.unpin, (thread) => ({
       ...thread,

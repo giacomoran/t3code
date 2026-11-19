@@ -6,7 +6,9 @@ import {
   type RunId,
   OrchestratorMcpFailure,
   type OrchestrationV2Command,
+  THREAD_SNOOZE_UNTIL_SETTLED_CAP_MS,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import { modelSelectionCommandType } from "@t3tools/shared/model";
 import { topOfPinnedRunOrderKey } from "@t3tools/shared/pinOrderKey";
@@ -423,15 +425,36 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
       }
       let command: OrchestrationV2Command;
       switch (input.action) {
-        case "snooze":
-          if (input.snoozedUntil === undefined) {
+        case "snooze": {
+          const untilSettledThreadIds = input.untilSettledThreadIds;
+          if (input.snoozedUntil === undefined && untilSettledThreadIds === undefined) {
             return yield* new OrchestratorMcpFailure({
               code: "invalid_request",
-              message: "snooze requires snoozedUntil.",
+              message: "snooze requires snoozedUntil or untilSettledThreadIds.",
             });
           }
-          command = { ...common, type: "thread.snooze", snoozedUntil: input.snoozedUntil };
+          if (untilSettledThreadIds !== undefined && untilSettledThreadIds.length === 0) {
+            return yield* new OrchestratorMcpFailure({
+              code: "invalid_request",
+              message: "untilSettledThreadIds needs at least one thread.",
+            });
+          }
+          // Waiting on threads caps the snooze, so a missing time means the default cap.
+          const snoozedUntil =
+            input.snoozedUntil ??
+            DateTime.formatIso(
+              DateTime.add(yield* DateTime.now, {
+                milliseconds: THREAD_SNOOZE_UNTIL_SETTLED_CAP_MS,
+              }),
+            );
+          command = {
+            ...common,
+            type: "thread.snooze",
+            snoozedUntil,
+            ...(untilSettledThreadIds === undefined ? {} : { untilSettledThreadIds }),
+          };
           break;
+        }
         case "unsnooze":
         case "unsettle":
           command = { ...common, type: `thread.${input.action}`, reason: "user" };

@@ -498,6 +498,11 @@ const OrchestrationV2LastTitleRegeneration = Schema.Struct({
   completedAt: Schema.DateTimeUtc,
 });
 
+/** Most threads one "until threads settle" snooze may wait on. */
+export const THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS = 50;
+/** An "until threads settle" snooze also wakes after this long, in case they never settle. */
+export const THREAD_SNOOZE_UNTIL_SETTLED_CAP_MS = 30 * 24 * 60 * 60 * 1000;
+
 export const OrchestrationV2AppThread = Schema.Struct({
   ...OrchestrationV2CreationFields,
   id: ThreadId,
@@ -545,6 +550,8 @@ export const OrchestrationV2AppThread = Schema.Struct({
   unsettledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   snoozedUntil: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   snoozedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
+  /** Threads this snooze waits on; absent or null for a plain time snooze. */
+  snoozeUntilSettledThreadIds: Schema.optional(Schema.NullOr(Schema.Array(ThreadId))),
   lastSnoozeWakeAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecovery)),
   guestShare: Schema.optional(Schema.NullOr(ThreadGuestShare)),
@@ -2484,6 +2491,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   unsettledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   snoozedUntil: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   snoozedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
+  snoozeUntilSettledThreadIds: Schema.optional(Schema.NullOr(Schema.Array(ThreadId))),
   limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecovery)),
   pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
@@ -3431,12 +3439,20 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     snoozedUntil: IsoDateTime,
+    // Wake early once every listed thread is settled, archived, or deleted; snoozedUntil caps the wait.
+    untilSettledThreadIds: Schema.optional(
+      Schema.Array(ThreadId).check(
+        Schema.isMinLength(1),
+        Schema.isMaxLength(THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS),
+      ),
+    ),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.unsnooze"),
     commandId: CommandId,
     threadId: ThreadId,
-    reason: Schema.Literal("user"),
+    // Only the server sends "threads_settled", when every thread a snooze waits on has settled.
+    reason: Schema.Literals(["user", "threads_settled"]),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.auto-settle.set"),

@@ -1,3 +1,5 @@
+import type { ThreadId } from "@t3tools/contracts";
+
 // Shared across hook instances so sidebar, header and menu actions invalidate each other.
 const currentActions = new Map<string, symbol>();
 const listeners = new Set<() => void>();
@@ -40,7 +42,11 @@ export type ThreadUndoStep =
   | { readonly action: "unsnooze" }
   | { readonly action: "pin"; readonly orderKey?: string }
   | { readonly action: "reorderActive"; readonly orderKey: string }
-  | { readonly action: "snooze"; readonly snoozedUntil: string };
+  | {
+      readonly action: "snooze";
+      readonly snoozedUntil: string;
+      readonly untilSettledThreadIds?: ReadonlyArray<ThreadId>;
+    };
 
 export type ThreadUndoPlan = readonly [ThreadUndoStep, ...ThreadUndoStep[]];
 
@@ -52,6 +58,7 @@ export function planThreadUndo(
     readonly activeOrderKey?: string | null;
     readonly unsettledAt?: string | null;
     readonly snoozedUntil?: string | null;
+    readonly snoozeUntilSettledThreadIds?: ReadonlyArray<ThreadId> | null;
   } | null,
 ): ThreadUndoPlan {
   if (action === "snooze") return [{ action: "unsnooze" }];
@@ -60,9 +67,16 @@ export function planThreadUndo(
     ...(thread?.pinOrderKey != null ? { orderKey: thread.pinOrderKey } : {}),
   };
   // Pinning clears snooze on the server; restore it after restoring pin placement.
+  const untilSettledThreadIds = thread?.snoozeUntilSettledThreadIds ?? [];
   const snooze =
     thread?.snoozedUntil != null
-      ? [{ action: "snooze" as const, snoozedUntil: thread.snoozedUntil }]
+      ? [
+          {
+            action: "snooze" as const,
+            snoozedUntil: thread.snoozedUntil,
+            ...(untilSettledThreadIds.length > 0 ? { untilSettledThreadIds } : {}),
+          },
+        ]
       : [];
   if (action === "unpin") return [pin, ...snooze];
   // Settling clears a manual active position; pinned threads are placed by their pin instead.
@@ -87,10 +101,15 @@ export function cancelledOnDevice(value: unknown): boolean {
   return typeof value === "object" && value !== null && "cancelledOnDevice" in value;
 }
 
+/**
+ * Runs an undo plan step by step. `isThreadDone` reads the client's shells (see
+ * `isSnoozeDependencyDone`) for a restored wait on threads.
+ */
 export async function executeThreadUndo<Result>(
   plan: ThreadUndoPlan,
   execute: (step: ThreadUndoStep) => Promise<Result>,
   succeeded: (result: Result) => boolean,
+  isThreadDone: (threadId: ThreadId) => boolean,
 ): Promise<Result> {
   let result = await execute(plan[0]);
   for (const step of plan.slice(1)) {
@@ -98,6 +117,10 @@ export async function executeThreadUndo<Result>(
     // A snooze can expire before Undo runs, and the server rejects an expired restore.
     // @effect-diagnostics-next-line globalDate:off
     if (step.action === "snooze" && Date.parse(step.snoozedUntil) <= Date.now()) continue;
+    // It also rejects a wait whose threads all finished meanwhile; that wait has ended too.
+    if (step.action === "snooze" && step.untilSettledThreadIds?.every(isThreadDone) === true) {
+      continue;
+    }
     result = await execute(step);
   }
   return result;

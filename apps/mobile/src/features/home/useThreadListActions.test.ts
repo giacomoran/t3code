@@ -27,7 +27,13 @@ const state = vi.hoisted(() => ({
   requests: [] as {
     action: string;
     environmentId: string;
-    input: { threadId: string; orderKey?: string; snoozedUntil?: string; reason?: string };
+    input: {
+      threadId: string;
+      orderKey?: string;
+      snoozedUntil?: string;
+      untilSettledThreadIds?: ReadonlyArray<string>;
+      reason?: string;
+    };
   }[],
   dialogs: [] as { onConfirm: () => void }[],
   alerts: [] as {
@@ -103,6 +109,7 @@ vi.mock("../../state/atom-registry", async () => {
                           capabilities: {
                             threadSettlement: true,
                             threadSnooze: true,
+                            threadSnoozeUntilSettled: true,
                             threadPinning: true,
                             threadPinReorder: true,
                             threadTitleRegeneration: true,
@@ -501,7 +508,10 @@ describe("thread action undo", () => {
       pinnedAt: "2026-09-02T00:00:00.000Z",
       pinOrderKey: "m",
       snoozedUntil: "2099-01-01T09:00:00.000Z",
+      snoozeUntilSettledThreadIds: [ThreadId.make("dependency")],
     });
+    // The thread it waits on is still open, so Undo restores the wait.
+    state.shells = [makeThread({ id: ThreadId.make("dependency") })];
     expect(await useThreadListActions().settleThread(thread)).toBe(true);
     const undo = readThreadUndoNotice()!.undo;
     expect(readThreadUndoNotice()?.action).toBe("Settled");
@@ -517,8 +527,26 @@ describe("thread action undo", () => {
     expect(state.requests[3]?.input).toEqual({
       threadId: thread.id,
       snoozedUntil: thread.snoozedUntil,
+      untilSettledThreadIds: [ThreadId.make("dependency")],
     });
     expect(readThreadUndoNotice()).toBeNull();
+  });
+
+  it("snoozes until threads settle and says so in the undo notice", async () => {
+    const thread = makeThread();
+    const dependencies = [ThreadId.make("first"), ThreadId.make("second")];
+    expect(
+      await useThreadListActions().snoozeThread(thread, "2099-01-01T09:00:00.000Z", dependencies),
+    ).toBe(true);
+    expect(state.requests.at(-1)).toMatchObject({
+      action: "snooze",
+      input: {
+        threadId: thread.id,
+        snoozedUntil: "2099-01-01T09:00:00.000Z",
+        untilSettledThreadIds: dependencies,
+      },
+    });
+    expect(readThreadUndoNotice()?.message).toBe("Snoozed until 2 threads settle");
   });
 
   // regression: #21401 restore archive and thread action undo

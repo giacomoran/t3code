@@ -125,6 +125,7 @@ export interface ThreadActionMenuState {
     readonly pinning: boolean;
     readonly titleRegeneration: boolean;
     readonly notificationMuting: boolean;
+    readonly snoozeUntilSettled: boolean;
   };
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
   /** Guest links need their own grant, so the caller checks it instead of `canOperate`. */
@@ -155,7 +156,8 @@ export function isThreadTriageAction(action: string): boolean {
     action === "unsettle" ||
     action === "snooze" ||
     action === "unsnooze" ||
-    action.startsWith("snooze:")
+    // A wait on threads is never queued offline (see threadCommands.ts).
+    (action.startsWith("snooze:") && action !== "snooze:until-settled")
   );
 }
 
@@ -214,6 +216,9 @@ export function buildThreadActionMenuItems(
                     label: resolve(msg("Custom…")),
                     separatorBefore: state.snoozePresets.length > 0,
                   },
+                  ...(state.supports.snoozeUntilSettled
+                    ? [{ id: "snooze:until-settled" as const, label: "Until threads settle…" }]
+                    : []),
                 ],
               },
         ]

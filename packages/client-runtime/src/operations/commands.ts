@@ -133,6 +133,8 @@ export interface ReorderActiveThreadInput extends ThreadCommandInput {
 
 export interface SnoozeThreadInput extends ThreadCommandInput {
   readonly snoozedUntil: string;
+  /** Wake early once all of these threads settle; `snoozedUntil` caps the wait. */
+  readonly untilSettledThreadIds?: ReadonlyArray<ThreadId>;
 }
 
 export interface UnsnoozeThreadInput extends ThreadCommandInput {
@@ -678,6 +680,9 @@ export const snoozeThread = Effect.fn("EnvironmentCommands.snoozeThread")(functi
     commandId: yield* allocateCommandId(input),
     threadId: input.threadId,
     snoozedUntil: input.snoozedUntil,
+    ...(input.untilSettledThreadIds === undefined
+      ? {}
+      : { untilSettledThreadIds: input.untilSettledThreadIds }),
   });
 });
 

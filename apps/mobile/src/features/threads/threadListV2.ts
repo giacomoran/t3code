@@ -19,6 +19,7 @@ import {
   threadSearchMatchKey,
   threadSearchSubject,
 } from "@t3tools/client-runtime/state/thread-search";
+import { presentThreadSnoozeUntilSettled } from "@t3tools/client-runtime/state/thread-snooze-until-settled";
 import { foldSearchQuery, rankSearchItems, scoreThreadSearch } from "@t3tools/shared/paletteSearch";
 import {
   createInboxReturnTracker,
@@ -101,6 +102,27 @@ function presetOptions(presets: ReadonlyArray<SnoozePresetSetting> | undefined) 
   return presets ? { presets } : {};
 }
 
+/** A row's snooze submenu: the presets, Custom, then Until threads settle where the server has it. */
+export function resolveThreadListV2SnoozeMenuActions(
+  input: {
+    readonly presets: ReadonlyArray<SnoozePreset>;
+    readonly untilSettledSupported: boolean;
+  },
+  resolve: MessageResolver = m,
+): MenuAction[] {
+  return [
+    ...input.presets.map((preset) => ({
+      id: `snooze:${preset.id}`,
+      title: preset.label,
+      subtitle: preset.whenLabel,
+    })),
+    { id: "snooze:custom", title: resolve(msg("Custom…", { $context: "custom snooze time" })) },
+    ...(input.untilSettledSupported
+      ? [{ id: "snooze:until-settled", title: resolve(msg("Until threads settle…")) }]
+      : []),
+  ];
+}
+
 export function resolveThreadListV2SnoozeMenuSelection(input: {
   readonly event: string;
   readonly displayedPresets: ReadonlyArray<SnoozePreset>;
@@ -109,8 +131,12 @@ export function resolveThreadListV2SnoozeMenuSelection(input: {
 }):
   | { readonly _tag: "selected"; readonly preset: SnoozePreset }
   | { readonly _tag: "expired" }
+  | { readonly _tag: "custom" }
+  | { readonly _tag: "until-settled" }
   | { readonly _tag: "not-snooze" } {
   if (!input.event.startsWith("snooze:")) return { _tag: "not-snooze" };
+  if (input.event === "snooze:custom") return { _tag: "custom" };
+  if (input.event === "snooze:until-settled") return { _tag: "until-settled" };
   const preset = pickSnoozePreset({
     shown: input.displayedPresets,
     id: input.event.slice("snooze:".length),
@@ -315,6 +341,8 @@ export function threadListV2RowAccessibilityLabel(
     readonly title: string;
     readonly variant: "card" | "slim";
     readonly woke: boolean;
+    /** Replaces "Woke" when the wake has a reason, such as "Threads settled". */
+    readonly wokeLabel?: string | null;
     readonly statusLabel: string | undefined;
     readonly timeLabel: string;
     readonly snoozeWakeLabel: string | undefined;
@@ -329,7 +357,7 @@ export function threadListV2RowAccessibilityLabel(
     input.variant === "slim"
       ? (input.snoozeWakeLabel ?? input.timeLabel)
       : input.woke
-        ? resolve(msg("Woke", { $context: "thread came back from snooze" }))
+        ? (input.wokeLabel ?? resolve(msg("Woke", { $context: "thread came back from snooze" })))
         : (input.statusLabel ?? input.timeLabel);
   return [
     input.title,
@@ -414,6 +442,8 @@ export interface ThreadListV2Item {
   readonly snoozed: boolean;
   readonly pinned: boolean;
   readonly wokeAt: string | null;
+  /** Why the thread woke, shown instead of "Woke": "Threads settled". */
+  readonly wokeLabel: string | null;
   readonly isLast: boolean;
 }
 
@@ -439,6 +469,8 @@ export interface ThreadListV2ThreadListItem {
   readonly key: string;
   readonly item: ThreadListV2Item;
   readonly snoozeWakeLabelText: string | undefined;
+  /** Set instead of the wake label while the snooze waits on threads to settle. */
+  readonly snoozeWaitingThreadCount: number | undefined;
   readonly timeLabel: string;
   readonly snoozePresetMinute: string | undefined;
   readonly showTrailingDivider: boolean;
@@ -515,7 +547,9 @@ export function threadListV2ListItemsAreEqual(
         previous.item.snoozed === item.item.snoozed &&
         previous.item.pinned === item.item.pinned &&
         previous.item.wokeAt === item.item.wokeAt &&
+        previous.item.wokeLabel === item.item.wokeLabel &&
         previous.snoozeWakeLabelText === item.snoozeWakeLabelText &&
+        previous.snoozeWaitingThreadCount === item.snoozeWaitingThreadCount &&
         previous.timeLabel === item.timeLabel &&
         previous.snoozePresetMinute === item.snoozePresetMinute &&
         previous.showTrailingDivider === item.showTrailingDivider &&
@@ -600,8 +634,15 @@ export function buildThreadListV2ListItems(input: {
   const resolve = input.resolve ?? m;
   const queuedThreadKeys = input.queuedThreadKeys?.size ? input.queuedThreadKeys : undefined;
   const threadItems = input.items.map((item): ThreadListV2ListItem => {
+    // A snooze waiting on threads shows their count; its wake time is only the 30-day cap.
+    const waitingThreadCount = item.thread.snoozeUntilSettledThreadIds?.length ?? 0;
+    const snoozeWaitingThreadCount =
+      item.snoozed && waitingThreadCount > 0 ? waitingThreadCount : undefined;
     const snoozeWakeLabelText =
-      item.snoozed && item.thread.snoozedUntil != null && input.snoozeLabelNow !== undefined
+      item.snoozed &&
+      snoozeWaitingThreadCount === undefined &&
+      item.thread.snoozedUntil != null &&
+      input.snoozeLabelNow !== undefined
         ? snoozeWakeLabel(item.thread.snoozedUntil, { now: input.snoozeLabelNow }, resolve)
         : undefined;
     // Put the clock on items so recycler equality limits ticks to rows displaying snooze preset times.
@@ -621,7 +662,12 @@ export function buildThreadListV2ListItems(input: {
       key: `v2-thread:${item.thread.environmentId}:${item.thread.id}`,
       item,
       snoozeWakeLabelText,
-      timeLabel: resolveThreadListV2ItemTimeLabel(item, snoozeWakeLabelText !== undefined, resolve),
+      snoozeWaitingThreadCount,
+      timeLabel: resolveThreadListV2ItemTimeLabel(
+        item,
+        snoozeWakeLabelText !== undefined || snoozeWaitingThreadCount !== undefined,
+        resolve,
+      ),
       snoozePresetMinute,
       showTrailingDivider: false,
       hasQueuedMessages:
@@ -752,6 +798,23 @@ export function buildThreadListV2Items(input: {
         );
   const query = foldSearchQuery(input.searchQuery);
   const nowMs = Date.parse(now);
+  // Built on the first woke thread that waited on others, which most layouts never see.
+  let threadByKey: ReadonlyMap<string, EnvironmentThreadShell> | null = null;
+  const woke = (thread: EnvironmentThreadShell) => {
+    const wokeAt = resolveThreadListV2WokeAt(thread, { now });
+    if (wokeAt === null || (thread.snoozeUntilSettledThreadIds?.length ?? 0) === 0) {
+      return { wokeAt, wokeLabel: null };
+    }
+    threadByKey ??= new Map(
+      input.threads.map((candidate) => [`${candidate.environmentId}:${candidate.id}`, candidate]),
+    );
+    const byKey = threadByKey;
+    const { wokeLabel } = presentThreadSnoozeUntilSettled(thread, {
+      now,
+      threadById: (threadId) => byKey.get(`${thread.environmentId}:${threadId}`),
+    });
+    return { wokeAt, wokeLabel };
+  };
   const projectKeys = input.projectRefs
     ? new Set(input.projectRefs.map((ref) => `${ref.environmentId}:${ref.projectId}`))
     : null;
@@ -845,7 +908,7 @@ export function buildThreadListV2Items(input: {
         variant: slim.has(thread) ? "slim" : "card",
         snoozed: snoozedThreads.has(thread),
         pinned: pinnedThreads.has(thread),
-        wokeAt: slim.has(thread) ? null : resolveThreadListV2WokeAt(thread, { now }),
+        ...(slim.has(thread) ? { wokeAt: null, wokeLabel: null } : woke(thread)),
         isLast: index === results.length - 1,
       })),
       hiddenSettledCount: 0,
@@ -918,7 +981,7 @@ export function buildThreadListV2Items(input: {
       variant: "card",
       snoozed: false,
       pinned: true,
-      wokeAt: resolveThreadListV2WokeAt(thread, { now }),
+      ...woke(thread),
       isLast: false,
     });
   }
@@ -928,7 +991,7 @@ export function buildThreadListV2Items(input: {
       variant: "card",
       snoozed: false,
       pinned: false,
-      wokeAt: resolveThreadListV2WokeAt(thread, { now }),
+      ...woke(thread),
       isLast: false,
     });
   }
@@ -939,7 +1002,7 @@ export function buildThreadListV2Items(input: {
       variant: "card",
       snoozed: false,
       pinned: false,
-      wokeAt: resolveThreadListV2WokeAt(thread, { now }),
+      ...woke(thread),
       isLast: false,
     });
   }
@@ -951,6 +1014,7 @@ export function buildThreadListV2Items(input: {
       snoozed: true,
       pinned: false,
       wokeAt: null,
+      wokeLabel: null,
       isLast: false,
     });
   }
@@ -962,6 +1026,7 @@ export function buildThreadListV2Items(input: {
       snoozed: false,
       pinned: false,
       wokeAt: null,
+      wokeLabel: null,
       isLast: false,
     });
   }

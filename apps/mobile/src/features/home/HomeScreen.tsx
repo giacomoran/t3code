@@ -16,7 +16,11 @@ import {
 } from "@t3tools/client-runtime/state/shell";
 import { pickableProjectGroups } from "@t3tools/client-runtime/state/project-grouping";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
-import { type EnvironmentId, type SidebarProjectGroupingMode } from "@t3tools/contracts";
+import {
+  type EnvironmentId,
+  type SidebarProjectGroupingMode,
+  type ThreadId,
+} from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import {
   use,
@@ -134,6 +138,7 @@ interface HomeScreenProps {
   readonly onSnoozeThread: (
     thread: EnvironmentThreadShell,
     snoozedUntil: string,
+    untilSettledThreadIds?: ReadonlyArray<ThreadId>,
   ) => Promise<boolean>;
   readonly onUnsnoozeThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
   readonly onUnsettleThread: (thread: EnvironmentThreadShell) => void;
@@ -412,6 +417,7 @@ export function HomeScreen(props: HomeScreenProps) {
     pinningEnvironmentIds,
     autoSettleOptOutEnvironmentIds,
     notificationMutingEnvironmentIds,
+    snoozeUntilSettledEnvironmentIds,
     pinReorderEnvironmentIds,
     activeReorderEnvironmentIds,
     titleRegenerationEnvironmentIds,
@@ -545,8 +551,10 @@ export function HomeScreen(props: HomeScreenProps) {
         snoozed={item.item.snoozed}
         pinned={item.item.pinned}
         wokeAt={item.item.wokeAt}
+        wokeLabel={item.item.wokeLabel}
         snoozePresetMinute={item.snoozePresetMinute ?? ""}
         snoozeWakeLabelText={item.snoozeWakeLabelText}
+        snoozeWaitingThreadCount={item.snoozeWaitingThreadCount}
         timeLabel={item.timeLabel}
         showTrailingDivider={item.showTrailingDivider}
         project={projectByKey.get(scopedProjectKey(thread.environmentId, thread.projectId)) ?? null}
@@ -581,6 +589,7 @@ export function HomeScreen(props: HomeScreenProps) {
         settlementSupported={settlementEnvironmentIds.has(thread.environmentId)}
         onSettleThread={handleSettleThread}
         snoozeSupported={snoozeEnvironmentIds.has(thread.environmentId)}
+        snoozeUntilSettledSupported={snoozeUntilSettledEnvironmentIds.has(thread.environmentId)}
         snoozePresets={snoozePresetsByEnvironmentId.get(thread.environmentId)}
         pinningSupported={pinningEnvironmentIds.has(thread.environmentId)}
         autoSettleOptOutSupported={autoSettleOptOutEnvironmentIds.has(thread.environmentId)}

@@ -15,6 +15,8 @@ import { mobilePreferencesAtom } from "../../state/preferences";
 import { parseThreadKey, threadKey } from "@t3tools/client-runtime/state/entities";
 import { createThreadVisitTracker } from "@t3tools/client-runtime/state/thread-visits";
 import { useChildThreadInputs, useThreadReportedModelSelection } from "../../state/entities";
+import { useSnoozeUntilSettledStates } from "../../state/snooze-until-settled";
+import { presentThreadSnoozeUntilSettled } from "@t3tools/client-runtime/state/thread-snooze-until-settled";
 import { UsageLimitRecoveryCard } from "./UsageLimitRecoveryCard";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import {
@@ -662,6 +664,14 @@ function ThreadDetailBody(
     lastVisitedAt: props.selectedThread.lastVisitedAt,
     latestRunCompletedAt: props.selectedThread.latestRun?.completedAt ?? null,
   });
+  const snoozeUntilSettledStates = useSnoozeUntilSettledStates(
+    props.selectedThread.environmentId,
+    props.selectedThread.snoozeUntilSettledThreadIds,
+  );
+  const snoozeUntilSettled = presentThreadSnoozeUntilSettled(props.selectedThread, {
+    now: lifecycleNow,
+    threadById: (threadId) => snoozeUntilSettledStates.get(threadId),
+  });
   const runStatusAction = async (action: "stop" | "wake" | "unsettle" | "dismiss") => {
     const permitted =
       action === "wake" || action === "unsettle" ? canTriageThread : props.canOperateThread;
@@ -794,12 +804,14 @@ function ThreadDetailBody(
       key: "lifecycle",
       icon: settled && !lifecycleSnoozed ? "checkmark.circle" : "alarm",
       label: lifecycleSnoozed
-        ? wake === null
-          ? gt("Snoozed", { $context: "thread state" })
-          : gt("Snoozed, {time} left", { time: wake })
+        ? snoozeUntilSettled.waitingPhrase !== null
+          ? `Snoozed ${snoozeUntilSettled.waitingPhrase}`
+          : wake === null
+            ? gt("Snoozed", { $context: "thread state" })
+            : gt("Snoozed, {time} left", { time: wake })
         : settled
           ? gt("Settled", { $context: "thread state" })
-          : gt("Woke from snooze"),
+          : (snoozeUntilSettled.wokeLabel ?? gt("Woke from snooze")),
       action: {
         label: statusPending
           ? lifecycleSnoozed

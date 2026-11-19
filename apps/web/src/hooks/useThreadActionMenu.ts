@@ -1,6 +1,7 @@
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { requestCustomSnooze } from "../components/CustomSnoozeDialog";
+import { requestSnoozeUntilSettled } from "../components/SnoozeUntilSettledDialog";
 import { openGuestShareDialog } from "../components/chat/guestShareDialogState";
 import {
   type AtomCommandResult,
@@ -18,7 +19,11 @@ import {
 import { useRouter } from "@tanstack/react-router";
 import { msg } from "gt-react";
 
-import { pickSnoozePreset, resolveSnoozePresets } from "../components/Sidebar.snooze";
+import {
+  pickSnoozePreset,
+  resolveSnoozePresets,
+  type SnoozeChoice,
+} from "../components/Sidebar.snooze";
 import {
   buildThreadActionMenuItems,
   isThreadTriageAction,
@@ -37,6 +42,7 @@ import {
   readEnvironmentServerConfigLoaded,
   readEnvironmentSupportsAutoSettleOptOut,
   readEnvironmentSupportsNotificationMuting,
+  readEnvironmentSupportsSnoozeUntilSettled,
   readThreadShell,
   useProjects,
 } from "../state/entities";
@@ -135,6 +141,7 @@ export function useThreadActionMenu(input: {
       pinning: configLoaded,
       titleRegeneration: configLoaded,
       notificationMuting: readEnvironmentSupportsNotificationMuting(threadRef.environmentId),
+      snoozeUntilSettled: readEnvironmentSupportsSnoozeUntilSettled(threadRef.environmentId),
     };
     const isRegeneratingTitle = thread.titleRegeneration != null;
     const snoozePresets = resolveSnoozePresets(now, timestampFormat, threadRef.environmentId);
@@ -175,17 +182,26 @@ export function useThreadActionMenu(input: {
         return;
       }
       if (action.startsWith("snooze:")) {
-        const preset =
+        const preset: SnoozeChoice | null | undefined =
           action === "snooze:custom"
             ? await requestCustomSnooze()
-            : pickSnoozePreset(
-                snoozePresets,
-                action.slice("snooze:".length),
-                timestampFormat,
-                threadRef.environmentId,
-              );
+            : action === "snooze:until-settled"
+              ? await requestSnoozeUntilSettled({
+                  environmentId: threadRef.environmentId,
+                  excludeThreadIds: [threadRef.threadId],
+                })
+              : pickSnoozePreset(
+                  snoozePresets,
+                  action.slice("snooze:".length),
+                  timestampFormat,
+                  threadRef.environmentId,
+                );
         if (!preset) return;
-        const result = await snoozeThread(threadRef, preset.snoozedUntil);
+        const result = await snoozeThread(
+          threadRef,
+          preset.snoozedUntil,
+          preset.untilSettledThreadIds,
+        );
         if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
           failureToast(m(msg("Failed to snooze thread")), squashAtomCommandFailure(result));
         }

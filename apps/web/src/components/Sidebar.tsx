@@ -11,6 +11,7 @@ import {
 } from "./chat/threadContextDrag";
 import { discardComposerDraft } from "../lib/discardComposerDraft";
 import { requestCustomSnooze } from "./CustomSnoozeDialog";
+import { requestSnoozeUntilSettled } from "./SnoozeUntilSettledDialog";
 import { useAtomValue } from "@effect/atom-react";
 import * as Option from "effect/Option";
 import { Atom } from "effect/reactivity";
@@ -231,7 +232,7 @@ import {
   pickSnoozePreset,
   resolveSnoozePresets,
   snoozeWakeLabel,
-  type SnoozePreset,
+  type SnoozeChoice,
 } from "./Sidebar.snooze";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { deriveProviderEntriesByEnvironment } from "../providerInstances";
@@ -2300,7 +2301,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   };
   const performSnooze = async (
     threadRef: ScopedThreadRef,
-    preset: Pick<SnoozePreset, "snoozedUntil">,
+    preset: SnoozeChoice,
     opts: { coSnoozingKeys?: ReadonlySet<string> } = {},
   ) => {
     const threadKey = scopedThreadKey(threadRef);
@@ -2310,7 +2311,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     snoozingThreadKeysRef.current.add(threadKey);
     const navigateAfterSnooze = planForwardNavigation(threadKey, opts.coSnoozingKeys);
     if (navigateAfterSnooze) departRouteThread(threadKey);
-    const result = await snoozeThread(threadRef, preset.snoozedUntil);
+    const result = await snoozeThread(threadRef, preset.snoozedUntil, preset.untilSettledThreadIds);
     snoozingThreadKeysRef.current.delete(threadKey);
     if (result._tag === "Failure") {
       stayOnRouteThread(threadKey);
@@ -2336,7 +2337,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const attemptSnooze = useStableCallback(
     (
       threadRef: ScopedThreadRef,
-      preset: Pick<SnoozePreset, "snoozedUntil">,
+      preset: SnoozeChoice,
       opts: { coSnoozingKeys?: ReadonlySet<string> } = {},
     ) => {
       void (async () => {
@@ -2389,6 +2390,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           serverConfigs.has(thread.environmentId) &&
           canSnooze(thread, { now: selectionNow.toISOString() }),
       );
+      // The picked threads must share the snoozed threads' environment.
+      const selectionEnvironmentId = selectedThreads[0]!.environmentId;
+      const canSnoozeSelectionUntilSettled =
+        selectedThreads.every((thread) => thread.environmentId === selectionEnvironmentId) &&
+        serverConfigs.get(selectionEnvironmentId)?.environment.capabilities
+          .threadSnoozeUntilSettled === true;
       const titleRegenerationThreads = selectedThreads.filter((thread) =>
         serverConfigs.has(thread.environmentId),
       );
@@ -2442,6 +2449,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         separatorBefore: snoozePresets.length > 0,
                         disabled: !canOperateThreads(selectedThreads, true),
                       },
+                      ...(canSnoozeSelectionUntilSettled
+                        ? [
+                            {
+                              id: "snooze:until-settled",
+                              label: "Until threads settle…",
+                              disabled: !canOperateThreads(selectedThreads),
+                            },
+                          ]
+                        : []),
                     ],
                   },
                 ]
@@ -2540,15 +2556,20 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         return;
       }
       if (clicked.value?.startsWith("snooze:")) {
-        const preset =
+        const preset: SnoozeChoice | null | undefined =
           clicked.value === "snooze:custom"
             ? await requestCustomSnooze()
-            : pickSnoozePreset(
-                snoozePresets,
-                clicked.value.slice("snooze:".length),
-                timestampFormat,
-                selectedThreads[0]!.environmentId,
-              );
+            : clicked.value === "snooze:until-settled"
+              ? await requestSnoozeUntilSettled({
+                  environmentId: selectionEnvironmentId,
+                  excludeThreadIds: selectedThreads.map((thread) => thread.id),
+                })
+              : pickSnoozePreset(
+                  snoozePresets,
+                  clicked.value.slice("snooze:".length),
+                  timestampFormat,
+                  selectedThreads[0]!.environmentId,
+                );
         if (preset) {
           const coSnoozingKeys = new Set(threadKeys);
           clearSelection();
@@ -2820,6 +2841,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 notificationMuting:
                   serverConfigs.get(thread.environmentId)?.environment.capabilities
                     .threadNotificationMuting === true,
+                snoozeUntilSettled:
+                  serverConfigs.get(thread.environmentId)?.environment.capabilities
+                    .threadSnoozeUntilSettled === true,
               },
               snoozePresets,
             }),
@@ -2834,15 +2858,20 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         )
           return;
         if (clicked.value?.startsWith("snooze:")) {
-          const preset =
+          const preset: SnoozeChoice | null | undefined =
             clicked.value === "snooze:custom"
               ? await requestCustomSnooze()
-              : pickSnoozePreset(
-                  snoozePresets,
-                  clicked.value.slice("snooze:".length),
-                  timestampFormat,
-                  thread.environmentId,
-                );
+              : clicked.value === "snooze:until-settled"
+                ? await requestSnoozeUntilSettled({
+                    environmentId: thread.environmentId,
+                    excludeThreadIds: [thread.id],
+                  })
+                : pickSnoozePreset(
+                    snoozePresets,
+                    clicked.value.slice("snooze:".length),
+                    timestampFormat,
+                    thread.environmentId,
+                  );
           if (preset) attemptSnooze(threadRef, preset);
           return;
         }
@@ -3653,6 +3682,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               : null
                           }
                           wokeAt={threadWokeAt(thread, { now: snoozeNow })}
+                          snoozeNow={snoozeNow}
                           isActive={routeRowThreadKey === threadKey}
                           revealRef={routeRowThreadKey === threadKey ? revealActiveRow : undefined}
                           isRouteThread={routeThreadKey === threadKey}

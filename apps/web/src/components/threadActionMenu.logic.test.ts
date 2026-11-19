@@ -22,6 +22,7 @@ const baseState: ThreadActionMenuState = {
     pinning: true,
     titleRegeneration: true,
     notificationMuting: true,
+    snoozeUntilSettled: true,
   },
   snoozePresets: [
     { id: "hour", label: "In 1 hour", whenLabel: "3:00 PM", snoozedUntil: "2026-08-07T15:00:00Z" },
@@ -70,6 +71,19 @@ describe("buildThreadActionMenuItems", () => {
       ).toBe(true);
     },
   );
+
+  it.each([
+    [true, ["snooze:hour", "snooze:custom", "snooze:until-settled"]],
+    [false, ["snooze:hour", "snooze:custom"]],
+  ])("offers snoozing until threads settle when supported (%s)", (supported, expected) => {
+    const items = buildThreadActionMenuItems({
+      ...baseState,
+      supports: { ...baseState.supports, snoozeUntilSettled: supported },
+    });
+    expect(items.find((item) => item.id === "snooze")?.children?.map((child) => child.id)).toEqual(
+      expected,
+    );
+  });
 
   it("disables archive and turning into a project while the thread is running", () => {
     const items = buildThreadActionMenuItems({

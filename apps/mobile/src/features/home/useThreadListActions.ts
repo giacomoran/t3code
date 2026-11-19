@@ -4,7 +4,11 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell
 import * as ThreadUndo from "@t3tools/client-runtime/state/thread-undo";
 import { showThreadUndoNotice } from "./thread-undo-notice";
 import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
-import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
+import {
+  isSnoozeDependencyDone,
+  snoozeUntilSettledPhrase,
+} from "@t3tools/client-runtime/state/thread-snooze-until-settled";
+import { AuthOrchestrationOperateScope, type ThreadId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Haptics from "expo-haptics";
 import { msg } from "gt-react-native";
@@ -253,7 +257,11 @@ export function useThreadListActions(): {
   readonly archiveThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
   readonly confirmDeleteThread: (thread: EnvironmentThreadShell) => void;
   readonly settleThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
-  readonly snoozeThread: (thread: EnvironmentThreadShell, snoozedUntil: string) => Promise<boolean>;
+  readonly snoozeThread: (
+    thread: EnvironmentThreadShell,
+    snoozedUntil: string,
+    untilSettledThreadIds?: ReadonlyArray<ThreadId>,
+  ) => Promise<boolean>;
   readonly unsnoozeThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
   readonly unsettleThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
   readonly pinThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
@@ -319,9 +327,11 @@ export function useThreadListActions(): {
     action: "Settled" | "Snoozed" | "Unpinned",
     claim: ReturnType<typeof ThreadUndo.begin>,
     plan: ThreadUndo.ThreadUndoPlan,
+    message?: string,
   ) =>
     showThreadUndoNotice({
       action,
+      ...(message === undefined ? {} : { message }),
       claim,
       undo: async () => {
         try {
@@ -355,7 +365,13 @@ export function useThreadListActions(): {
                   if (!checkThreadOperationPermission(thread, failureTitle, true)) return false;
                   const result = await snoozeMutation({
                     environmentId: thread.environmentId,
-                    input: { threadId: thread.id, snoozedUntil: step.snoozedUntil },
+                    input: {
+                      threadId: thread.id,
+                      snoozedUntil: step.snoozedUntil,
+                      ...(step.untilSettledThreadIds === undefined
+                        ? {}
+                        : { untilSettledThreadIds: step.untilSettledThreadIds }),
+                    },
                   });
                   if (result._tag === "Failure") {
                     const error = Cause.squash(result.cause);
@@ -372,6 +388,12 @@ export function useThreadListActions(): {
               }
             },
             (result) => result,
+            (threadId) =>
+              isSnoozeDependencyDone(
+                appAtomRegistry
+                  .get(environmentThreadShells.threadShellsAtom)
+                  .find((row) => row.id === threadId && row.environmentId === thread.environmentId),
+              ),
           );
         } catch (error) {
           Dialog.alert(
@@ -398,8 +420,14 @@ export function useThreadListActions(): {
     }
     return succeeded;
   };
-  const snoozeThread = async (thread: EnvironmentThreadShell, snoozedUntil: string) => {
-    if (!checkThreadOperationPermission(thread, m(msg("Could not snooze thread")), true)) {
+  const snoozeThread = async (
+    thread: EnvironmentThreadShell,
+    snoozedUntil: string,
+    untilSettledThreadIds?: ReadonlyArray<ThreadId>,
+  ) => {
+    // A wait on threads is never queued offline, so it needs the operate grant itself.
+    const triage = untilSettledThreadIds === undefined;
+    if (!checkThreadOperationPermission(thread, m(msg("Could not snooze thread")), triage)) {
       return false;
     }
     const key = scopedThreadKey(thread.environmentId, thread.id);
@@ -416,6 +444,17 @@ export function useThreadListActions(): {
               "This environment's server does not support snoozing yet. Update the server to use Snooze.",
             ),
           ),
+        );
+        return false;
+      }
+      if (
+        untilSettledThreadIds !== undefined &&
+        appAtomRegistry.get(environmentServerConfigsAtom).get(thread.environmentId)?.environment
+          .capabilities.threadSnoozeUntilSettled !== true
+      ) {
+        Dialog.alert(
+          "Could not snooze thread",
+          "Update this environment's server to snooze until threads settle.",
         );
         return false;
       }
@@ -443,6 +482,7 @@ export function useThreadListActions(): {
             input: {
               threadId: thread.id,
               snoozedUntil,
+              ...(untilSettledThreadIds === undefined ? {} : { untilSettledThreadIds }),
             },
           }),
         (result) => result._tag === "Success",
@@ -458,7 +498,15 @@ export function useThreadListActions(): {
         );
         return false;
       }
-      offerUndo(thread, "Snoozed", claim, ThreadUndo.planThreadUndo("snooze"));
+      offerUndo(
+        thread,
+        "Snoozed",
+        claim,
+        ThreadUndo.planThreadUndo("snooze"),
+        untilSettledThreadIds === undefined
+          ? undefined
+          : `Snoozed ${snoozeUntilSettledPhrase(untilSettledThreadIds.length)}`,
+      );
       return true;
     })();
     snoozeInFlightThreadKeys.current.delete(key);
@@ -881,8 +929,12 @@ export function useThreadListActions(): {
     settleThread: useStableCallback((thread: EnvironmentThreadShell) =>
       settleThread(liveThread(thread)),
     ),
-    snoozeThread: useStableCallback((thread: EnvironmentThreadShell, snoozedUntil: string) =>
-      snoozeThread(liveThread(thread), snoozedUntil),
+    snoozeThread: useStableCallback(
+      (
+        thread: EnvironmentThreadShell,
+        snoozedUntil: string,
+        untilSettledThreadIds?: ReadonlyArray<ThreadId>,
+      ) => snoozeThread(liveThread(thread), snoozedUntil, untilSettledThreadIds),
     ),
     unsnoozeThread: useStableCallback((thread: EnvironmentThreadShell) =>
       unsnoozeThread(liveThread(thread)),

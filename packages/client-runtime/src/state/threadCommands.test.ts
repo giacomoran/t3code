@@ -444,12 +444,34 @@ describe("title regeneration", () => {
 });
 
 describe("remote thread lifecycle commands", () => {
+  const DEPENDENCY_ID = ThreadId.make("thread-dependency");
   const actions = [
-    ["settle", {}, { settledOverride: "settled", pinnedAt: null, snoozedUntil: null }],
+    [
+      "settle",
+      {},
+      {
+        settledOverride: "settled",
+        pinnedAt: null,
+        snoozedUntil: null,
+        snoozeUntilSettledThreadIds: null,
+      },
+    ],
     ["unsettle", { reason: "user" }, { settledOverride: "active", settledAt: null }],
-    ["snooze", { snoozedUntil: "2099-01-01T00:00:00.000Z" }, { snoozedUntil: FUTURE }],
-    ["unsnooze", { reason: "user" }, { snoozedUntil: null, snoozedAt: null }],
-    ["pin", { orderKey: "a" }, { pinnedAt: expect.any(Object), pinOrderKey: "a" }],
+    [
+      "snooze",
+      { snoozedUntil: "2099-01-01T00:00:00.000Z", untilSettledThreadIds: [DEPENDENCY_ID] },
+      { snoozedUntil: FUTURE, snoozeUntilSettledThreadIds: [DEPENDENCY_ID] },
+    ],
+    [
+      "unsnooze",
+      { reason: "user" },
+      { snoozedUntil: null, snoozedAt: null, snoozeUntilSettledThreadIds: null },
+    ],
+    [
+      "pin",
+      { orderKey: "a" },
+      { pinnedAt: expect.any(Object), pinOrderKey: "a", snoozeUntilSettledThreadIds: null },
+    ],
     ["unpin", {}, { pinnedAt: null, pinOrderKey: null }],
     ["setAutoSettle", { enabled: false }, { autoSettleDisabledAt: expect.any(Object) }],
     ["reorderPin", { orderKey: "b" }, { pinOrderKey: "b" }],
@@ -471,7 +493,11 @@ describe("remote thread lifecycle commands", () => {
                 ? { settledOverride: "settled" as const, settledAt: NOW }
                 : {}),
               ...(action === "unsnooze" || action === "settle" || action === "pin"
-                ? { snoozedUntil: FUTURE, snoozedAt: NOW }
+                ? {
+                    snoozedUntil: FUTURE,
+                    snoozedAt: NOW,
+                    snoozeUntilSettledThreadIds: [DEPENDENCY_ID],
+                  }
                 : {}),
               ...(action === "unpin" || action === "settle"
                 ? { pinnedAt: NOW, pinOrderKey: "a" }

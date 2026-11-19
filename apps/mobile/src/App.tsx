@@ -25,6 +25,7 @@ import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { ProjectChipIconRasterizer } from "./native/ProjectChipIconImages";
 import { ThreadArrangementHost } from "./features/threads/ThreadArrangementSheet";
+import { SnoozeUntilSettledHost } from "./features/threads/SnoozeUntilSettledSheet";
 import * as Dialog from "./components/ui/Dialog";
 import { CloudAuthProvider } from "./features/cloud/CloudAuthProvider";
 import { prepareNativeShowcaseCapture } from "./features/showcase/nativeShowcaseScene";
@@ -325,6 +326,7 @@ function AppContent() {
                 />
                 <Dialog.Host />
                 <ThreadArrangementHost />
+                <SnoozeUntilSettledHost />
                 <ProjectChipIconRasterizer />
               </NativeLayoutMetricsProvider>
             </GlobalVoiceInputControl>

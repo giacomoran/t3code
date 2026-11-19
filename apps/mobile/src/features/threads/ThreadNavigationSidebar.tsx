@@ -267,6 +267,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
     pinningEnvironmentIds,
     autoSettleOptOutEnvironmentIds,
     notificationMutingEnvironmentIds,
+    snoozeUntilSettledEnvironmentIds,
     pinReorderEnvironmentIds,
     activeReorderEnvironmentIds,
     titleRegenerationEnvironmentIds,
@@ -427,8 +428,10 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
             snoozed={item.item.snoozed}
             pinned={item.item.pinned}
             wokeAt={item.item.wokeAt}
+            wokeLabel={item.item.wokeLabel}
             snoozePresetMinute={item.snoozePresetMinute ?? ""}
             snoozeWakeLabelText={item.snoozeWakeLabelText}
+            snoozeWaitingThreadCount={item.snoozeWaitingThreadCount}
             timeLabel={item.timeLabel}
             project={projectByKey.get(scopeKey) ?? null}
             providerInstance={resolveProviderInstance(thread)}
@@ -471,6 +474,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
             settlementSupported={settlementEnvironmentIds.has(thread.environmentId)}
             onSettleThread={settleThread}
             snoozeSupported={snoozeEnvironmentIds.has(thread.environmentId)}
+            snoozeUntilSettledSupported={snoozeUntilSettledEnvironmentIds.has(thread.environmentId)}
             snoozePresets={snoozePresetsByEnvironmentId.get(thread.environmentId)}
             pinningSupported={pinningEnvironmentIds.has(thread.environmentId)}
             autoSettleOptOutSupported={autoSettleOptOutEnvironmentIds.has(thread.environmentId)}

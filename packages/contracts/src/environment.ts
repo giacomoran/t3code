@@ -143,6 +143,7 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   threadProjectFromScratch: Schema.optionalKey(Schema.Boolean),
   threadTitleRegeneration: Schema.optionalKey(Schema.Boolean),
   threadNotificationMuting: Schema.optionalKey(Schema.Boolean),
+  threadSnoozeUntilSettled: Schema.optionalKey(Schema.Boolean),
   threadVisitedTracking: Schema.optionalKey(Schema.Boolean),
   threadPullRequestLinking: Schema.optionalKey(Schema.Boolean),
   serverResolvedCommandContext: Schema.optionalKey(Schema.Boolean),

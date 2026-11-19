@@ -5689,7 +5689,10 @@ describe("OrchestratorMcpService thread list", () => {
   const shells = [
     shell("thread:a-snoozed", "project:a", true),
     shell("thread:a-awake", "project:a", false),
-    shell("thread:b-snoozed", "project:b", true, true, true),
+    {
+      ...shell("thread:b-snoozed", "project:b", true, true, true),
+      snoozeUntilSettledThreadIds: [ThreadId.make("thread:a-awake")],
+    },
     {
       ...shell("thread:a-awaiting-command", "project:a", false),
       activityRunStatus: null,
@@ -5785,6 +5788,10 @@ describe("OrchestratorMcpService thread list", () => {
       assert.deepStrictEqual(
         listed.threads.map((thread) => thread.pinned),
         [false, true],
+      );
+      assert.deepStrictEqual(
+        listed.threads.map((thread) => thread.snoozeUntilSettledThreadIds),
+        [undefined, [ThreadId.make("thread:a-awake")]],
       );
       assert.deepStrictEqual(
         listed.threads.map((thread) => [thread.blockedOnThreadWait, thread.pendingBackgroundTasks]),

@@ -59,7 +59,16 @@ import { composerDraftHasUserContent, useComposerDraftStore } from "../../compos
 import { useEnvironmentScope, useEnvironmentScopeDenied } from "~/state/session";
 import { threadEnvironment } from "../../state/threads";
 import { vcsEnvironment } from "../../state/vcs";
-import { useChildThreadInputs, readThreadShell, waitForThreadShell } from "../../state/entities";
+import {
+  useChildThreadInputs,
+  readThreadShell,
+  useSnoozeUntilSettledShells,
+  waitForThreadShell,
+} from "../../state/entities";
+import {
+  presentSnoozeUntilSettled,
+  snoozeUntilSettledStatusLabel,
+} from "../snoozeUntilSettled.logic";
 import { serverEnvironment } from "../../state/server";
 import { environmentShell } from "../../state/shell";
 import { ThreadStatusLine } from "./ThreadStatusLine";
@@ -226,6 +235,16 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     activeThreadShell !== null && serverConfigLoaded
       ? threadWokeAt(activeThreadShell, { now: snoozeClock })
       : null;
+  const snoozeUntilSettledShells = useSnoozeUntilSettledShells(
+    (activeThreadShell?.snoozeUntilSettledThreadIds ?? []).length > 0 ? activeThreadRef : null,
+  );
+  const activeThreadSnoozeUntilSettled =
+    activeThreadShell === null
+      ? null
+      : presentSnoozeUntilSettled(activeThreadShell, {
+          now: snoozeClock,
+          shells: snoozeUntilSettledShells,
+        });
   const acknowledgeThreadWoke = useAcknowledgeThreadWoke();
   const acknowledgeActiveThreadWoke = () => {
     if (activeThreadRef === null || activeThreadWokeAt === null) return;
@@ -663,9 +682,11 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
       <ThreadStatusLine
         icon={<AlarmClockIcon />}
         label={
-          snoozeWake
-            ? gt("Snoozed, {remaining} left", { remaining: snoozeWake })
-            : gt("Snoozed", { $context: "thread status" })
+          activeThreadSnoozeUntilSettled?.waitingPhrase
+            ? snoozeUntilSettledStatusLabel(activeThreadSnoozeUntilSettled)
+            : snoozeWake && snoozeWake !== "now"
+              ? gt("Snoozed, {remaining} left", { remaining: snoozeWake })
+              : gt("Snoozed", { $context: "thread status" })
         }
         clockMinute={nowMinute}
         actionLabel={isUnsnoozing ? gt("Waking...") : gt("Wake now")}
@@ -689,7 +710,11 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
   ) : activeThreadWokeVisible ? (
     <ThreadStatusLine
       icon={<AlarmClockIcon />}
-      label={gt("Woke from snooze")}
+      label={
+        activeThreadSnoozeUntilSettled?.wokeLabel
+          ? `Woke from snooze: ${activeThreadSnoozeUntilSettled.wokeLabel.toLowerCase()}`
+          : gt("Woke from snooze")
+      }
       actionLabel={gt("Dismiss")}
       onAction={acknowledgeActiveThreadWokeStable}
     />

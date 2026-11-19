@@ -11,6 +11,7 @@ import {
 } from "./thread-list-v2-row-appearance";
 import { RowPressable } from "../../components/ui/RowPressable";
 import { CustomSnoozeSheet } from "./CustomSnoozeSheet";
+import { requestSnoozeUntilSettled } from "./snooze-until-settled-request";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { threadArrangementOpenAtom } from "../../state/thread-order";
 import { threadEnvironment } from "../../state/threads";
@@ -30,10 +31,12 @@ import {
   AuthOrchestrationOperateScope,
   type EnvironmentId,
   type EnvironmentMachineKind,
+  type ThreadId,
 } from "@t3tools/contracts";
 import { toServerClock } from "@t3tools/client-runtime/clock";
 import type { SnoozePresetSetting } from "@t3tools/contracts/settings";
 import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
+import { snoozeUntilSettledPhrase } from "@t3tools/client-runtime/state/thread-snooze-until-settled";
 import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import type { MenuAction } from "@react-native-menu/menu";
 import { useNavigation } from "@react-navigation/native";
@@ -80,6 +83,7 @@ import { useCanShareWithGuest } from "./useCanShareWithGuest";
 import {
   THREAD_LIST_V2_SETTLED_PAGE_COUNT,
   resolveThreadListV2SnoozeGateExpiryMs,
+  resolveThreadListV2SnoozeMenuActions,
   resolveThreadListV2SnoozeMenuSelection,
   resolveThreadListV2SnoozePresets,
   threadHasUnseenCompletion,
@@ -752,7 +756,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly snoozed?: boolean;
   readonly pinned?: boolean;
   readonly wokeAt: string | null;
+  readonly wokeLabel: string | null;
   readonly snoozeWakeLabelText?: string;
+  readonly snoozeWaitingThreadCount?: number;
   readonly timeLabel: string;
   readonly snoozePresetMinute: string;
   readonly project: EnvironmentProject | null;
@@ -776,7 +782,11 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly onSetThreadNotificationsMuted: (thread: EnvironmentThreadShell, muted: boolean) => void;
   readonly notificationMutingSupported: boolean;
   readonly onSettleThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
-  readonly onSnoozeThread: (thread: EnvironmentThreadShell, snoozedUntil: string) => void;
+  readonly onSnoozeThread: (
+    thread: EnvironmentThreadShell,
+    snoozedUntil: string,
+    untilSettledThreadIds?: ReadonlyArray<ThreadId>,
+  ) => void;
   readonly onUnsnoozeThread: (thread: EnvironmentThreadShell) => void;
   readonly onUnsettleThread: (thread: EnvironmentThreadShell) => void;
   readonly onArchiveThread: (thread: EnvironmentThreadShell) => void;
@@ -785,6 +795,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly onSetThreadAutoSettle: (thread: EnvironmentThreadShell, enabled: boolean) => void;
   readonly settlementSupported: boolean;
   readonly snoozeSupported: boolean;
+  readonly snoozeUntilSettledSupported: boolean;
   readonly snoozePresets: ReadonlyArray<SnoozePresetSetting> | undefined;
   readonly pinningSupported: boolean;
   readonly autoSettleOptOutSupported: boolean;
@@ -904,6 +915,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       title: thread.title,
       variant,
       woke: showsWoke,
+      wokeLabel: props.wokeLabel,
       // Working and waiting rows show only an icon and a duration, so name them for speech.
       statusLabel:
         statusLabel &&
@@ -912,7 +924,12 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             ? gt("Waiting", { $context: "thread status" })
             : gt("Working", { $context: "thread status" }))),
       timeLabel,
-      snoozeWakeLabel: snoozedRow && !pendingSync ? snoozeWakeLabelText : undefined,
+      snoozeWakeLabel:
+        !snoozedRow || pendingSync
+          ? undefined
+          : props.snoozeWaitingThreadCount !== undefined
+            ? `Snoozed ${snoozeUntilSettledPhrase(props.snoozeWaitingThreadCount)}`
+            : snoozeWakeLabelText,
       providerNameLabel,
       hasQueuedMessages: props.hasQueuedMessages === true,
       regeneratingTitle: isRegeneratingTitle,
@@ -964,6 +981,14 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     (snoozedUntil: string) => onSnoozeThread(thread, snoozedUntil),
     [onSnoozeThread, thread],
   );
+  const handleSnoozeUntilSettled = useCallback(() => {
+    void requestSnoozeUntilSettled({
+      environmentId: thread.environmentId,
+      excludeThreadIds: [thread.id],
+    }).then((choice) => {
+      if (choice !== null) onSnoozeThread(thread, choice.snoozedUntil, choice.threadIds);
+    });
+  }, [onSnoozeThread, thread]);
   const handleUnsnooze = useCallback(() => onUnsnoozeThread(thread), [onUnsnoozeThread, thread]);
   const handleUnsettle = useCallback(() => onUnsettleThread(thread), [onUnsettleThread, thread]);
   const handlePin = useCallback(() => onPinThread(thread), [onPinThread, thread]);
@@ -1006,15 +1031,15 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     m,
   );
   const snoozePresetActions = useMemo<MenuAction[]>(
-    () => [
-      ...snoozePresets.map((preset) => ({
-        id: `snooze:${preset.id}`,
-        title: preset.label,
-        subtitle: preset.whenLabel,
-      })),
-      { id: "snooze:custom", title: gt("Custom…", { $context: "custom snooze time" }) },
-    ],
-    [gt, snoozePresets],
+    () =>
+      resolveThreadListV2SnoozeMenuActions(
+        {
+          presets: snoozePresets,
+          untilSettledSupported: props.snoozeUntilSettledSupported,
+        },
+        m,
+      ),
+    [m, snoozePresets, props.snoozeUntilSettledSupported],
   );
   const reorderMenuItems = useMemo<MenuAction[]>(
     () =>
@@ -1285,16 +1310,14 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         });
       }
       if (nativeEvent.event === "delete") handleDelete();
-      if (nativeEvent.event === "snooze:custom") {
-        setCustomSnoozeOpen(true);
-        return;
-      }
       const snoozeSelection = resolveThreadListV2SnoozeMenuSelection({
         event: nativeEvent.event,
         displayedPresets: snoozePresets,
         now: new Date(),
         presets: props.snoozePresets,
       });
+      if (snoozeSelection._tag === "custom") setCustomSnoozeOpen(true);
+      if (snoozeSelection._tag === "until-settled") handleSnoozeUntilSettled();
       if (snoozeSelection._tag === "selected") {
         handleSnooze(snoozeSelection.preset.snoozedUntil);
       } else if (snoozeSelection._tag === "expired") {
@@ -1320,6 +1343,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       handlePin,
       handleSettle,
       handleSnooze,
+      handleSnoozeUntilSettled,
       handleSetAutoSettle,
       handleUnpin,
       handleUnsettle,
@@ -1486,7 +1510,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
                     : "text-warning-foreground",
                 )}
               >
-                {gt("Woke", { $context: "thread came back from snooze" })}
+                {props.wokeLabel ?? gt("Woke", { $context: "thread came back from snooze" })}
               </Text>
             </Pressable>
           ) : statusLabel ? (
@@ -1784,21 +1808,47 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             ) : null}
           </View>
           {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
-          <Text
-            className={cn(
-              "text-sm tabular-nums",
-              selected
-                ? selectedThreadRowColors.mutedForegroundClassName
-                : snoozedRow
-                  ? rowAppearance.mutedForegroundClassName
-                  : rowAppearance.tertiaryForegroundClassName,
-            )}
-            style={{ fontFamily: MONO_FONT }}
-          >
-            {!pendingSync && snoozedRow && snoozeWakeLabelText !== undefined
-              ? snoozeWakeLabelText
-              : timeLabel}
-          </Text>
+          {!pendingSync && snoozedRow && props.snoozeWaitingThreadCount !== undefined ? (
+            <View className="flex-row items-center gap-1">
+              <SymbolView
+                name="hourglass"
+                size={12}
+                tintColorClassName={
+                  selected
+                    ? selectedThreadRowColors.mutedIconTintClassName
+                    : rowAppearance.mutedIconTintClassName
+                }
+                type="monochrome"
+              />
+              <Text
+                className={cn(
+                  "text-sm tabular-nums",
+                  selected
+                    ? selectedThreadRowColors.mutedForegroundClassName
+                    : rowAppearance.mutedForegroundClassName,
+                )}
+                style={{ fontFamily: MONO_FONT }}
+              >
+                {props.snoozeWaitingThreadCount}
+              </Text>
+            </View>
+          ) : (
+            <Text
+              className={cn(
+                "text-sm tabular-nums",
+                selected
+                  ? selectedThreadRowColors.mutedForegroundClassName
+                  : snoozedRow
+                    ? rowAppearance.mutedForegroundClassName
+                    : rowAppearance.tertiaryForegroundClassName,
+              )}
+              style={{ fontFamily: MONO_FONT }}
+            >
+              {!pendingSync && snoozedRow && snoozeWakeLabelText !== undefined
+                ? snoozeWakeLabelText
+                : timeLabel}
+            </Text>
+          )}
         </View>
       </RowPressable>
     );

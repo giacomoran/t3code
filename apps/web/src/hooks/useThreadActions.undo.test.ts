@@ -65,6 +65,7 @@ const threadShell = vi.hoisted(() => ({
   activeOrderKey: null as string | null,
   unsettledAt: null as string | null,
   snoozedUntil: null as string | null,
+  snoozeUntilSettledThreadIds: null as ReadonlyArray<ThreadId> | null,
   projectId: "project",
   environmentId: "undo-env",
   session: null,
@@ -74,7 +75,13 @@ const shellLoaded = vi.hoisted(() => ({ current: true }));
 vi.mock("../state/entities", async (original) => ({
   ...(await original<typeof import("../state/entities")>()),
   readEnvironmentServerConfigLoaded: () => true,
-  readThreadShell: () => (shellLoaded.current ? threadShell : null),
+  // Other threads, such as the one a snooze waits on, read as open.
+  readThreadShell: (ref: { readonly threadId: string }) =>
+    ref.threadId !== "thread"
+      ? { settledOverride: null, archivedAt: null }
+      : shellLoaded.current
+        ? threadShell
+        : null,
 }));
 vi.mock("../state/use-atom-command", () => ({
   useAtomCommand: (command: unknown) => {
@@ -127,6 +134,7 @@ beforeEach(() => {
   threadShell.activeOrderKey = null;
   threadShell.unsettledAt = null;
   threadShell.snoozedUntil = null;
+  threadShell.snoozeUntilSettledThreadIds = null;
   shellLoaded.current = true;
 });
 afterEach(() => {
@@ -167,25 +175,33 @@ describe("pin", () => {
 });
 
 describe("unpin Undo", () => {
-  it("restores the original snooze after restoring the pin", async () => {
-    threadShell.pinnedAt = "2026-01-01T00:00:00.000Z";
-    threadShell.snoozedUntil = "2030-01-01T09:00:00.000Z";
-    await useThreadActions().unpinThread(target);
-    vi.mocked(announce).mockClear();
-    await currentUndo()();
-    expect(announce).not.toHaveBeenCalledWith("Pinned 1 thread");
-    expect(commands.pin).toHaveBeenCalledExactlyOnceWith({
-      environmentId: target.environmentId,
-      input: { threadId: target.threadId, orderKey: "a0" },
-    });
-    expect(commands.snooze).toHaveBeenCalledExactlyOnceWith({
-      environmentId: target.environmentId,
-      input: { threadId: target.threadId, snoozedUntil: threadShell.snoozedUntil },
-    });
-    expect(commands.pin.mock.invocationCallOrder[0]).toBeLessThan(
-      commands.snooze.mock.invocationCallOrder[0]!,
-    );
-  });
+  it.each([null, [ThreadId.make("dependency")]])(
+    "restores the original snooze after restoring the pin (waiting on %s)",
+    async (untilSettledThreadIds) => {
+      threadShell.pinnedAt = "2026-01-01T00:00:00.000Z";
+      threadShell.snoozedUntil = "2030-01-01T09:00:00.000Z";
+      threadShell.snoozeUntilSettledThreadIds = untilSettledThreadIds;
+      await useThreadActions().unpinThread(target);
+      vi.mocked(announce).mockClear();
+      await currentUndo()();
+      expect(announce).not.toHaveBeenCalledWith("Pinned 1 thread");
+      expect(commands.pin).toHaveBeenCalledExactlyOnceWith({
+        environmentId: target.environmentId,
+        input: { threadId: target.threadId, orderKey: "a0" },
+      });
+      expect(commands.snooze).toHaveBeenCalledExactlyOnceWith({
+        environmentId: target.environmentId,
+        input: {
+          threadId: target.threadId,
+          snoozedUntil: threadShell.snoozedUntil,
+          ...(untilSettledThreadIds === null ? {} : { untilSettledThreadIds }),
+        },
+      });
+      expect(commands.pin.mock.invocationCallOrder[0]).toBeLessThan(
+        commands.snooze.mock.invocationCallOrder[0]!,
+      );
+    },
+  );
 
   it("restores the pin without an already expired snooze", async () => {
     threadShell.pinnedAt = "2026-01-01T00:00:00.000Z";

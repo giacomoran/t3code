@@ -20,6 +20,7 @@ import {
   NonNegativeInt,
   ProjectId,
   clampedPositiveInt,
+  THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS,
 } from "@t3tools/contracts";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Schema from "effect/Schema";
@@ -33,7 +34,7 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
 const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
   description:
-    "Pin, snooze, settle, archive, or mark a thread unread. Omit `threadId` for this thread. `snooze` needs `snoozedUntil`. Settling this thread applies at turn end. A failed turn or queued message leaves it active.",
+    "Pin, snooze, settle, archive, or mark a thread unread. Omit `threadId` for this thread. `snooze` needs `snoozedUntil`, `untilSettledThreadIds`, or both: with ids it wakes once all of them are settled, archived, or deleted, or at `snoozedUntil` (default and at most 30 days out). Settling this thread applies at turn end. A failed turn or queued message leaves it active.",
   parameters: Schema.Struct({
     environmentId: OrchestratorMcpEnvironmentTarget,
     threadId: Schema.optional(ThreadId),
@@ -49,6 +50,9 @@ const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
       "mark_unread",
     ]),
     snoozedUntil: Schema.optional(IsoDateTime),
+    untilSettledThreadIds: Schema.optional(
+      Schema.Array(ThreadId).check(Schema.isMaxLength(THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS)),
+    ),
   }),
   success: Schema.Union([
     OrchestrationV2DispatchCommandResult,

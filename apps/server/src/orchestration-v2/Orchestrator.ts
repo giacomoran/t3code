@@ -227,6 +227,12 @@ import {
   ThreadForkServiceV2,
 } from "./ThreadForkService.ts";
 import { planThreadDeletion } from "./ThreadDeletion.ts";
+import {
+  areSnoozeDependenciesDone,
+  loadSnoozeDependency,
+  snoozeWaitingThreadIds,
+  validateSnoozeUntilSettledThreadIds,
+} from "./snoozeUntilSettled.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ServerSettings from "../serverSettings.ts";
 
@@ -4969,6 +4975,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       restoredUnsettledAt = parsed.value;
     }
     let snoozedUntil: DateTime.Utc | null = null;
+    let snoozeUntilSettledThreadIds: ReadonlyArray<ThreadId> | null = null;
+    const loadDependency = (threadId: ThreadId) =>
+      loadSnoozeDependency(projectionStore, threadId).pipe(mapDispatchError(command));
     if (command.type === "thread.snooze") {
       const projection = yield* loadProjectionForCommand(command, ["runs", "runtimeRequests"], {
         turnItemTypes: [],
@@ -5033,6 +5042,37 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         });
       }
       snoozedUntil = parsedSnoozedUntil.value;
+      if (command.untilSettledThreadIds !== undefined) {
+        const validation = yield* validateSnoozeUntilSettledThreadIds({
+          threadId: command.threadId,
+          threadIds: command.untilSettledThreadIds,
+          snoozedUntilMs: DateTime.toEpochMillis(parsedSnoozedUntil.value),
+          nowMs: DateTime.toEpochMillis(now),
+          loadThread: loadDependency,
+        });
+        if (validation.type === "invalid") {
+          return yield* new OrchestratorDispatchError({
+            commandId: command.commandId,
+            commandType: command.type,
+            cause: validation.cause,
+          });
+        }
+        snoozeUntilSettledThreadIds = validation.threadIds;
+      }
+    }
+    // Re-check when deciding: an ended or replaced snooze, or a reopened thread, keeps it as is.
+    if (command.type === "thread.unsnooze" && command.reason === "threads_settled") {
+      const waitingThreadIds = snoozeWaitingThreadIds(thread, DateTime.toEpochMillis(now));
+      if (
+        waitingThreadIds === null ||
+        !(yield* areSnoozeDependenciesDone(waitingThreadIds, loadDependency))
+      ) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: `Thread ${command.threadId} is not waiting on threads that have all settled.`,
+        });
+      }
     }
     let markUnreadVisitedAt: DateTime.Utc | null = null;
     if (command.type === "thread.mark-unread") {
@@ -5085,6 +5125,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             activeOrderKey: null,
             snoozedUntil: null,
             snoozedAt: null,
+            snoozeUntilSettledThreadIds: null,
             updatedAt:
               alreadySettled && thread.snoozedUntil == null && thread.snoozedAt == null
                 ? thread.updatedAt
@@ -5110,17 +5151,23 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           return {
             ...thread,
             snoozedUntil,
+            snoozeUntilSettledThreadIds,
             limitRecovery: thread.limitRecovery ? { ...thread.limitRecovery, snooze: false } : null,
             snoozedAt: now,
             updatedAt: now,
           };
         }
         case "thread.unsnooze": {
+          // Expire the snooze as its timer would; the kept list labels the wake.
+          if (command.reason === "threads_settled") {
+            return { ...thread, snoozedUntil: now, updatedAt: now };
+          }
           const alreadyAwake = thread.snoozedUntil == null;
           return {
             ...thread,
             snoozedUntil: null,
             snoozedAt: null,
+            snoozeUntilSettledThreadIds: null,
             lastSnoozeWakeAt: alreadyAwake ? thread.lastSnoozeWakeAt : now,
             updatedAt: alreadyAwake ? thread.updatedAt : now,
           };
@@ -5148,6 +5195,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             ...(thread.settledOverride === "settled" ? { unsettledAt: now } : {}),
             snoozedUntil: null,
             snoozedAt: null,
+            snoozeUntilSettledThreadIds: null,
             lastSnoozeWakeAt: thread.snoozedUntil == null ? thread.lastSnoozeWakeAt : now,
             updatedAt: alreadyPinned && !promotes ? thread.updatedAt : now,
           };
@@ -5196,7 +5244,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             ...thread,
             lastVisitedAt: markUnreadVisitedAt,
             ...(snoozeExpired
-              ? { snoozedUntil: null, snoozedAt: null, lastSnoozeWakeAt: thread.snoozedUntil }
+              ? {
+                  snoozedUntil: null,
+                  snoozedAt: null,
+                  snoozeUntilSettledThreadIds: null,
+                  lastSnoozeWakeAt: thread.snoozedUntil,
+                }
               : {}),
           };
         }
@@ -5232,13 +5285,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                   snoozedUntil: DateTime.makeUnsafe(limitRecovery.resetAt),
                   // Recovery updates acknowledge the same stopped run; their timestamps must not trigger fresh failure wakes.
                   snoozedAt: now,
+                  snoozeUntilSettledThreadIds: null,
                 }
               : command.limitRecovery !== undefined &&
                   thread.limitRecovery?.snooze &&
                   thread.snoozedUntil != null &&
                   DateTime.toEpochMillis(thread.snoozedUntil) ===
                     Date.parse(thread.limitRecovery.resetAt)
-                ? { snoozedUntil: null, snoozedAt: null, lastSnoozeWakeAt: now }
+                ? {
+                    snoozedUntil: null,
+                    snoozedAt: null,
+                    snoozeUntilSettledThreadIds: null,
+                    lastSnoozeWakeAt: now,
+                  }
                 : {}),
             ...(command.branch === undefined ? {} : { branch: command.branch }),
             ...(command.worktreePath === undefined ? {} : { worktreePath: command.worktreePath }),
@@ -7559,6 +7618,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ...projection.thread,
         snoozedUntil: null,
         snoozedAt: null,
+        snoozeUntilSettledThreadIds: null,
         updatedAt: now,
       };
       const event = yield* emit(
@@ -11274,7 +11334,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           threadId: command.threadId,
           providerInstanceId: projection.thread.providerInstanceId,
           occurredAt: now,
-          payload: { ...projection.thread, snoozedUntil: null, snoozedAt: null, updatedAt: now },
+          payload: {
+            ...projection.thread,
+            snoozedUntil: null,
+            snoozedAt: null,
+            snoozeUntilSettledThreadIds: null,
+            updatedAt: now,
+          },
         });
       }
       yield* emit(
@@ -11501,7 +11567,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           threadId: command.threadId,
           providerInstanceId: projection.thread.providerInstanceId,
           occurredAt: now,
-          payload: { ...projection.thread, snoozedUntil: null, snoozedAt: null, updatedAt: now },
+          payload: {
+            ...projection.thread,
+            snoozedUntil: null,
+            snoozedAt: null,
+            snoozeUntilSettledThreadIds: null,
+            updatedAt: now,
+          },
         });
       }
       yield* emit(
@@ -11999,7 +12071,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             threadId: command.threadId,
             providerInstanceId: thread.providerInstanceId,
             occurredAt: now,
-            payload: { ...thread, snoozedUntil: null, snoozedAt: null, updatedAt: now },
+            payload: {
+              ...thread,
+              snoozedUntil: null,
+              snoozedAt: null,
+              snoozeUntilSettledThreadIds: null,
+              updatedAt: now,
+            },
           });
         }
       }

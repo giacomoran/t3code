@@ -6,6 +6,11 @@ import { discardComposerDraft } from "../../lib/discardComposerDraft";
 import { formatWorktreePathForDisplay } from "../../worktreeCleanup";
 import { contextMenuSourceOf } from "../../contextMenuSource";
 import { requestCustomSnooze } from "../CustomSnoozeDialog";
+import { requestSnoozeUntilSettled } from "../SnoozeUntilSettledDialog";
+import {
+  presentSnoozeUntilSettled,
+  type SnoozeUntilSettledState,
+} from "../snoozeUntilSettled.logic";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
 import { useDeadlinePassed } from "~/hooks/useDeadline";
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/client-runtime/thread-pull-requests";
@@ -35,6 +40,7 @@ import {
   type EnvironmentId,
   type EnvironmentMachineKind,
   type ScopedThreadRef,
+  type ThreadId,
 } from "@t3tools/contracts";
 
 import type { TimestampFormat } from "@t3tools/contracts/settings";
@@ -51,6 +57,7 @@ import {
   ClockIcon,
   FolderGit2Icon,
   GitBranchIcon,
+  HourglassIcon,
   MessageCircleQuestionIcon,
   PinIcon,
   PinOffIcon,
@@ -123,8 +130,12 @@ import {
   useLinkedThreadPullRequest,
   ThreadSearchPullRequestNumber,
 } from "../ThreadStatusIndicators";
-import { pickSnoozePreset, resolveSnoozePresets, type SnoozePreset } from "../Sidebar.snooze";
-import { useThreadShell } from "../../state/entities";
+import { pickSnoozePreset, resolveSnoozePresets, type SnoozeChoice } from "../Sidebar.snooze";
+import {
+  readEnvironmentSupportsSnoozeUntilSettled,
+  useSnoozeUntilSettledShells,
+  useThreadShell,
+} from "../../state/entities";
 import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
 import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
 import { makeWorkspaceFileDropHandlers } from "../chat/workspaceFileDrop";
@@ -292,6 +303,8 @@ function SidebarThreadTooltip({
   branchMismatch,
   terminalStatus,
   terminalProcessCount,
+  snoozeUntilSettled,
+  snoozeWakeLabelText,
 }: {
   thread: SidebarThreadSummary;
   project: ProjectFaviconProject | null;
@@ -309,6 +322,8 @@ function SidebarThreadTooltip({
   } | null;
   terminalStatus: TerminalStatusIndicator | null;
   terminalProcessCount: number;
+  snoozeUntilSettled: SnoozeUntilSettledState | null;
+  snoozeWakeLabelText: string | null;
 }) {
   const driverKind = providerEntry?.driverKind ?? null;
   const worktreePath = thread.worktreePath?.trim();
@@ -330,6 +345,32 @@ function SidebarThreadTooltip({
           ) : null
         }
       >
+        {snoozeUntilSettled?.waitingPhrase ? (
+          <div className="flex min-w-0 flex-col gap-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <HourglassIcon aria-hidden className="size-3 shrink-0 stroke-muted-foreground" />
+              <div className="min-w-0 text-foreground/75">
+                {`Snoozed ${snoozeUntilSettled.waitingPhrase}`}
+                {snoozeWakeLabelText !== null && snoozeWakeLabelText !== "now"
+                  ? `, or in ${snoozeWakeLabelText}`
+                  : null}
+              </div>
+            </div>
+            {snoozeUntilSettled.waitingOn.map((waitingOn) => (
+              <div key={waitingOn.threadId} className="flex min-w-0 items-center gap-2 pl-5">
+                {waitingOn.isSettled ? (
+                  <CheckIcon
+                    aria-label="Settled"
+                    className="size-3 shrink-0 text-success-foreground"
+                  />
+                ) : (
+                  <CircleDashedIcon aria-label="Open" className="size-3 shrink-0" />
+                )}
+                <div className="min-w-0 truncate text-foreground/75">{waitingOn.title}</div>
+              </div>
+            ))}
+          </div>
+        ) : null}
         {projectDisplayName ? (
           <div className="flex min-w-0 items-center gap-2">
             {project ? <ProjectFavicon project={project} className="size-3 shrink-0" /> : null}
@@ -431,17 +472,20 @@ function SidebarThreadTooltip({
 function SnoozeMenuButton(props: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSnooze: (preset: Pick<SnoozePreset, "snoozedUntil">) => void;
+  onSnooze: (preset: SnoozeChoice) => void;
   timestampFormat: TimestampFormat;
   environmentId: EnvironmentId;
+  threadId: ThreadId;
 }) {
-  const { open, onOpenChange, onSnooze, timestampFormat, environmentId } = props;
+  const { open, onOpenChange, onSnooze, timestampFormat, environmentId, threadId } = props;
   const gt = useGT();
   const messages = useMessages();
   const presets = open
     ? // oxlint-disable-next-line react/purity -- Presets are resolved only while the menu is open, so each opening reads a fresh time.
       resolveSnoozePresets(new Date(), timestampFormat, environmentId, messages)
     : [];
+  const supportsSnoozeUntilSettled =
+    open && readEnvironmentSupportsSnoozeUntilSettled(environmentId);
   return (
     <Menu open={open} onOpenChange={onOpenChange}>
       <SharedTooltipTrigger
@@ -490,6 +534,20 @@ function SnoozeMenuButton(props: {
         >
           <T>Custom…</T>
         </MenuItem>
+        {supportsSnoozeUntilSettled ? (
+          <MenuItem
+            onClick={async (event) => {
+              event.stopPropagation();
+              const choice = await requestSnoozeUntilSettled({
+                environmentId,
+                excludeThreadIds: [threadId],
+              });
+              if (choice) onSnooze(choice);
+            }}
+          >
+            <T>Until threads settle…</T>
+          </MenuItem>
+        ) : null}
       </MenuPopup>
     </Menu>
   );
@@ -621,6 +679,8 @@ type SidebarThreadRowProps = {
   dragOverPinned: boolean;
   sweepAction: SidebarSweepAction | null;
   snoozeWakeLabelText: string | null;
+  /** The clock the snooze labels read, minute-stepped by the sidebar. */
+  snoozeNow: string;
   wokeAt: string | null;
   isActive: boolean;
   // Set on the active row only; scrolls it into view when a reveal is owed.
@@ -657,7 +717,7 @@ type SidebarThreadRowProps = {
     event: PointerEvent,
   ) => void;
   onUnsettle: (threadRef: ScopedThreadRef) => void;
-  onSnooze: (threadRef: ScopedThreadRef, preset: Pick<SnoozePreset, "snoozedUntil">) => void;
+  onSnooze: (threadRef: ScopedThreadRef, preset: SnoozeChoice) => void;
   onUnsnooze: (threadRef: ScopedThreadRef) => void;
   onUnpin: (threadRef: ScopedThreadRef) => void;
   onAcknowledgeWoke: (threadRef: ScopedThreadRef, visitedAt: string) => void;
@@ -734,6 +794,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   } = props;
   const threadRef = scopeThreadRef(thread.environmentId, thread.id);
   const threadKey = scopedThreadKey(threadRef);
+  // Looked up unfiltered: a thread the sidebar hides by tag still holds the snooze.
+  const snoozeUntilSettledShells = useSnoozeUntilSettledShells(
+    (thread.snoozeUntilSettledThreadIds ?? []).length > 0 ? threadRef : null,
+  );
+  const snoozeUntilSettled = presentSnoozeUntilSettled(thread, {
+    now: props.snoozeNow,
+    shells: snoozeUntilSettledShells,
+  });
   const canOperateThread = useEnvironmentScope(thread.environmentId, AuthOrchestrationOperateScope);
   const canTriageThread = !useEnvironmentScopeDenied(
     thread.environmentId,
@@ -812,6 +880,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     wokeAtDate !== null &&
     (lastVisitedDate === null || lastVisitedDate < wokeAtDate) &&
     thread.settledOverride !== "settled";
+  const wokeLabel =
+    snoozeUntilSettled?.wokeLabel ?? gt("Woke", { $context: "thread status: woke from snooze" });
   const shouldRecede = shouldRecedeSidebarThread({
     status,
     isUnread,
@@ -869,7 +939,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     }
                   : isWoke
                     ? {
-                        label: gt("Woke", { $context: "thread status: woke from snooze" }),
+                        label: wokeLabel,
                         icon: "woke" as const,
                         className: "text-warning-foreground",
                       }
@@ -917,6 +987,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       branchMismatch={branchMismatch}
       terminalStatus={terminalStatus}
       terminalProcessCount={terminalProcessCount}
+      snoozeUntilSettled={snoozeUntilSettled}
+      snoozeWakeLabelText={props.snoozeWakeLabelText}
     />
   );
 
@@ -999,7 +1071,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     event.stopPropagation();
     onUnpin(threadRef);
   };
-  const handleSnoozePreset = (preset: Pick<SnoozePreset, "snoozedUntil">) => {
+  const handleSnoozePreset = (preset: SnoozeChoice) => {
     onSnooze(threadRef, preset);
   };
   const [snoozeMenuOpenRaw, setSnoozeMenuOpen] = useState(false);
@@ -1437,6 +1509,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     <span className="text-xs">
                       <PendingSyncLabel />
                     </span>
+                  ) : variantAction === "unsnooze" &&
+                    props.snoozeWakeLabelText !== null &&
+                    snoozeUntilSettled?.waitingPhrase ? (
+                    <span className="inline-flex items-center gap-1 text-xs text-info-foreground tabular-nums">
+                      {/* An hourglass sets a wait on threads apart from a wake time. */}
+                      <HourglassIcon aria-hidden className="size-3" />
+                      <span aria-hidden>{snoozeUntilSettled.threadCount}</span>
+                      <span className="sr-only">{`Snoozed ${snoozeUntilSettled.waitingPhrase}`}</span>
+                    </span>
                   ) : variantAction === "unsnooze" && props.snoozeWakeLabelText !== null ? (
                     <span className="inline-flex items-center gap-1 text-xs text-info-foreground tabular-nums">
                       {/* The clock tells a wake time from an age at a glance. */}
@@ -1453,9 +1534,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           className="inline-flex cursor-pointer items-center gap-1 rounded-sm text-xs font-medium text-warning-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                         >
                           <AlarmClockIcon aria-hidden className="size-3" />
-                          <span role="status">
-                            <T context="thread status: woke from snooze">Woke</T>
-                          </span>
+                          <span role="status">{wokeLabel}</span>
                         </button>
                       }
                       label={
@@ -1734,6 +1813,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         onSnooze={handleSnoozePreset}
                         timestampFormat={props.timestampFormat}
                         environmentId={thread.environmentId}
+                        threadId={thread.id}
                       />
                     ) : null}
                     {props.settlementSupported ? (
@@ -1914,6 +1994,8 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
             branchMismatch={branchMismatch}
             terminalStatus={terminalStatus}
             terminalProcessCount={runningTerminalIds.length}
+            snoozeUntilSettled={null}
+            snoozeWakeLabelText={null}
           />
         }
         render={

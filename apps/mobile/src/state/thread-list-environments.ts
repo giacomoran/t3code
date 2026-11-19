@@ -12,7 +12,11 @@ export type ThreadListProvider = Pick<
   "instanceId" | "driver" | "enabled" | "displayName" | "accentColor" | "iconUrl"
 >;
 
-const capabilityKeys = ["threadAutoSettleOptOut", "threadNotificationMuting"] as const;
+const capabilityKeys = [
+  "threadAutoSettleOptOut",
+  "threadNotificationMuting",
+  "threadSnoozeUntilSettled",
+] as const;
 
 function selectEnvironment(config: ServerConfig, isConnected: boolean) {
   return {
@@ -62,6 +66,7 @@ function collectEnvironments(environments: ReadonlyMap<EnvironmentId, ListEnviro
   const loadedEnvironmentIds = new Set<EnvironmentId>();
   const autoSettleOptOutEnvironmentIds = new Set<EnvironmentId>();
   const notificationMutingEnvironmentIds = new Set<EnvironmentId>();
+  const snoozeUntilSettledEnvironmentIds = new Set<EnvironmentId>();
   const reorderableEnvironmentIds = new Set<EnvironmentId>();
   const snoozePresetsByEnvironmentId = new Map<EnvironmentId, ListEnvironment["snoozePresets"]>();
   for (const [
@@ -74,6 +79,7 @@ function collectEnvironments(environments: ReadonlyMap<EnvironmentId, ListEnviro
     loadedEnvironmentIds.add(id);
     if (capabilities.threadAutoSettleOptOut === true) autoSettleOptOutEnvironmentIds.add(id);
     if (capabilities.threadNotificationMuting === true) notificationMutingEnvironmentIds.add(id);
+    if (capabilities.threadSnoozeUntilSettled === true) snoozeUntilSettledEnvironmentIds.add(id);
     if (isConnected) reorderableEnvironmentIds.add(id);
   }
   return {
@@ -84,6 +90,7 @@ function collectEnvironments(environments: ReadonlyMap<EnvironmentId, ListEnviro
     pinningEnvironmentIds: loadedEnvironmentIds,
     autoSettleOptOutEnvironmentIds,
     notificationMutingEnvironmentIds,
+    snoozeUntilSettledEnvironmentIds,
     pinReorderEnvironmentIds: reorderableEnvironmentIds,
     activeReorderEnvironmentIds: reorderableEnvironmentIds,
     titleRegenerationEnvironmentIds: loadedEnvironmentIds,

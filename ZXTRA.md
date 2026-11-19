@@ -88,6 +88,34 @@ narrowed thread record (`AgentAwarenessThread` in `ProjectionStore.ts`), so the 
 has to be carried there too: without it, muted threads alert the phone again with no
 type error.
 
+### 6. Snooze until threads settle
+
+A thread's snooze menu has **Until threads settle…**, on web and desktop (row button,
+context menu, chat header menu, multi-selection) and mobile (long-press and swipe menus).
+It opens a picker with a search box (titles, project names, and message text through the
+thread search), a project filter and a status filter (Working / Needs attention / Idle).
+Pick one or more threads; the snoozed thread wakes once **all** of them are settled. An
+archived or deleted thread counts as settled. The snooze also carries a 30-day timer, so
+it wakes then at the latest. Agents set it through `t3_thread_organize`
+(`untilSettledThreadIds`). Requested upstream in
+[discussion #36745](https://github.com/pingdotgg/t3code/discussions/36745).
+
+The list is `snoozeUntilSettledThreadIds` on the thread (thread JSON, no migration), set
+by `thread.snooze { untilSettledThreadIds }`, where `snoozedUntil` is the 30-day cap, and
+advertised through the `threadSnoozeUntilSettled` environment capability. The server
+rejects the thread itself, unknown threads, a list that is all done already, and cycles;
+the pickers hide threads that would form a cycle. Every path that clears `snoozedUntil`
+also clears the list. `SnoozeUntilSettledWorker` reacts to settled, archived and deleted
+events, to new snoozes and unarchived waiters (plus a startup sweep), and dispatches
+`thread.unsnooze { reason: "threads_settled" }`, which sets `snoozedUntil` to now instead of
+clearing it. Clients therefore see an expired timer and show the usual woke indicator,
+labelled "Threads settled".
+
+Known limitations, as the checks span threads without a cross-thread lock: a thread that
+reopens between the wake's check and its commit can wake the waiter early (it fails safe:
+the thread resurfaces); and two snoozes decided at once, A waiting on B and B on A, can both
+pass the cycle check, so both stay snoozed until Wake now or the 30-day cap.
+
 ### Dropped: Claude and Codex quota reserves
 
 Until v0.1.8 the fork could stop a provider's turns once its five-hour quota reached a set
@@ -245,6 +273,18 @@ contracts (`orchestrationV2.ts`, `environment.ts`, `orchestratorMcp.ts`,
 on the server, the web sidebar, thread menu and notification coordinator, the mobile
 thread list and `AppSymbol.android.tsx`, and `client-runtime` commands and models.
 `git show <muting commit> --stat` lists them.
+
+Snooze until threads settle keeps its logic in new files
+(`apps/server/src/orchestration-v2/SnoozeUntilSettledWorker.ts`, `snoozeUntilSettled.ts`,
+`packages/client-runtime/src/state/threadSnoozeUntilSettled.ts`,
+`apps/web/src/components/SnoozeUntilSettledDialog.tsx`, `snoozeUntilSettled.logic.ts`,
+`apps/mobile/src/features/threads/SnoozeUntilSettledSheet.tsx`,
+`snoozeUntilSettledPicker.ts`). Its hunks in upstream files are the snooze validation and
+the list clearing in `Orchestrator.ts`, two shell lines in `ProjectionStore.ts`, the
+snooze contracts, `runtimeLayer.ts`, the MCP organize tool, client-runtime commands and
+undo, and the web and mobile snooze menus, rows and undo notices. `git show <commit> --stat`
+lists them. After a rebase, grep `Orchestrator.ts` for new places that clear
+`snoozedUntil`: each must clear `snoozeUntilSettledThreadIds` too.
 
 If a rebase conflicts, it will almost always be one of these small hunks.
 

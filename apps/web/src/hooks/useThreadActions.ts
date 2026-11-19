@@ -7,6 +7,10 @@ import {
 } from "@t3tools/client-runtime/environment";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { canSnooze, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
+import {
+  isSnoozeDependencyDone,
+  snoozeUntilSettledPhrase,
+} from "@t3tools/client-runtime/state/thread-snooze-until-settled";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import {
   AuthOrchestrationOperateScope,
@@ -958,7 +962,12 @@ export function useThreadActions() {
     });
   };
 
-  const snoozeThread = async (target: ScopedThreadRef, snoozedUntil: string) => {
+  /** With `untilSettledThreadIds`, it wakes once they all settle; `snoozedUntil` caps the wait. */
+  const snoozeThread = async (
+    target: ScopedThreadRef,
+    snoozedUntil: string,
+    untilSettledThreadIds?: ReadonlyArray<ThreadId>,
+  ) => {
     if (!readEnvironmentServerConfigLoaded(target.environmentId)) {
       return AsyncResult.failure(
         Cause.fail(
@@ -983,7 +992,11 @@ export function useThreadActions() {
     const action = ThreadUndo.begin("snooze", scopedThreadKey(target));
     const result = await snoozeThreadMutation({
       environmentId: target.environmentId,
-      input: { threadId: target.threadId, snoozedUntil },
+      input: {
+        threadId: target.threadId,
+        snoozedUntil,
+        ...(untilSettledThreadIds === undefined ? {} : { untilSettledThreadIds }),
+      },
     });
     if (result._tag !== "Success") {
       action.finish();
@@ -991,6 +1004,9 @@ export function useThreadActions() {
     }
     showThreadUndoNotice({
       action: "Snoozed",
+      ...(untilSettledThreadIds === undefined
+        ? {}
+        : { detail: snoozeUntilSettledPhrase(untilSettledThreadIds.length) }),
       claim: action,
       undo: () => runUndoPlan(target, ThreadUndo.planThreadUndo("snooze")),
       failureTitle: m(msg("Failed to wake thread")),
@@ -1020,11 +1036,21 @@ export function useThreadActions() {
           case "snooze":
             return snoozeThreadMutation({
               environmentId: target.environmentId,
-              input: { threadId: target.threadId, snoozedUntil: step.snoozedUntil },
+              input: {
+                threadId: target.threadId,
+                snoozedUntil: step.snoozedUntil,
+                ...(step.untilSettledThreadIds === undefined
+                  ? {}
+                  : { untilSettledThreadIds: step.untilSettledThreadIds }),
+              },
             });
         }
       },
       (result) => result._tag === "Success",
+      (threadId) =>
+        isSnoozeDependencyDone(
+          readThreadShell({ environmentId: target.environmentId, threadId }) ?? undefined,
+        ),
     );
   };
 

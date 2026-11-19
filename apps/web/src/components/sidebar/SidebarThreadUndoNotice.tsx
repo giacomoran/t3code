@@ -27,7 +27,11 @@ export function SidebarThreadUndoNotice() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const m = useMessages();
   // Short enough to fit beside the utility icons; screen readers hear the full summary.
-  const summary = notice ? m(SHORT_SUMMARY[notice.action], { count: notice.count }) : null;
+  const actionSummary = notice ? m(SHORT_SUMMARY[notice.action], { count: notice.count }) : null;
+  const summary =
+    actionSummary !== null && notice?.detail !== undefined
+      ? `${actionSummary} ${notice.detail}`
+      : actionSummary;
 
   // Keeps the last text on screen while it fades out, then unmounts on transitionend.
   const [shownSummary, setShownSummary] = useState(summary);

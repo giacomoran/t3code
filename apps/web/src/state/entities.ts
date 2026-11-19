@@ -399,6 +399,13 @@ export function readEnvironmentSupportsNotificationMuting(environmentId: Environ
   );
 }
 
+export function readEnvironmentSupportsSnoozeUntilSettled(environmentId: EnvironmentId): boolean {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .threadSnoozeUntilSettled === true
+  );
+}
+
 export function readEnvironmentThreadRefs(
   environmentId: EnvironmentId,
 ): ReadonlyArray<ScopedThreadRef> {
@@ -477,6 +484,36 @@ export function useThreadRelationshipShells(
   ref: ScopedThreadRef,
 ): ReadonlyArray<OrchestrationV2ThreadShell> {
   return useAtomValue(relationshipShellsAtomFamily(threadKey(ref)));
+}
+
+const snoozeUntilSettledShellsAtomFamily = Atom.family((key: string) => {
+  const ref = parseThreadKey(key);
+  let previous: ReadonlyArray<EnvironmentThreadShell> = [];
+  return Atom.make((get) => {
+    const threadIds =
+      get(environmentThreadShells.quietThreadShellAtom(ref))?.snoozeUntilSettledThreadIds ?? [];
+    const next = threadIds.flatMap((threadId) => {
+      const shell = get(
+        environmentThreadShells.quietThreadShellAtom({
+          environmentId: ref.environmentId,
+          threadId,
+        }),
+      );
+      return shell === null ? [] : [shell];
+    });
+    if (arrayElementsEqual(previous, next)) return previous;
+    previous = next;
+    return next;
+  }).pipe(Atom.withLabel(`web-thread-snooze-until-settled-shells:${key}`));
+});
+
+/** The loaded shells of the threads `ref`'s snooze waits on; deleted or unloaded ones are absent. */
+export function useSnoozeUntilSettledShells(
+  ref: ScopedThreadRef | null,
+): ReadonlyArray<EnvironmentThreadShell> {
+  return useAtomValue(
+    ref === null ? EMPTY_THREAD_SHELLS_ATOM : snoozeUntilSettledShellsAtomFamily(threadKey(ref)),
+  );
 }
 
 interface SubagentChild {

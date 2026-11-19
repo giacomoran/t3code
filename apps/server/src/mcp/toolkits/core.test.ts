@@ -639,6 +639,52 @@ it.effect("handoff analytics read only the caller's active run and its message",
   );
 });
 
+it.effect("snoozes until threads settle with the default cap when no time is given", () => {
+  const dispatched: Array<unknown> = [];
+  return Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const result = yield* server
+      .callTool({
+        name: "t3_thread_organize",
+        arguments: { action: "snooze", untilSettledThreadIds: ["thread:dependency"] },
+      })
+      .pipe(
+        Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+        Effect.provideService(McpSchema.McpServerClient, client),
+      );
+    expect(result.isError).not.toBe(true);
+    expect(dispatched).toMatchObject([
+      {
+        type: "thread.snooze",
+        threadId,
+        // TestClock starts at the epoch; the cap is 30 days.
+        snoozedUntil: "1970-01-31T00:00:00.000Z",
+        untilSettledThreadIds: ["thread:dependency"],
+      },
+    ]);
+  }).pipe(
+    Effect.provide(
+      layerThreadToolkit.pipe(
+        Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
+        Layer.provide(NodeCrypto.layer),
+        Layer.provide(
+          Layer.mock(ThreadManagement.ThreadManagementService)({
+            getThreadShell: (id) => Effect.succeed(McpToolAccessTestkit.liveThreadShell(id)),
+            getProjectThreadRecords: ({ threadId: id }) =>
+              Effect.succeed(
+                McpToolAccessTestkit.idleThreadProjection(McpToolAccessTestkit.liveThreadShell(id)),
+              ),
+            dispatch: (command) => {
+              dispatched.push(command);
+              return Effect.succeed({ sequence: 1 } as never);
+            },
+          }),
+        ),
+      ),
+    ),
+  );
+});
+
 it.effect("rejects an unknown organize target instead of archiving the calling thread", () => {
   const dispatched: Array<unknown> = [];
   return Effect.gen(function* () {

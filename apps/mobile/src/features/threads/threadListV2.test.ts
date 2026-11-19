@@ -37,6 +37,7 @@ import {
   buildThreadListV2ListItems,
   getThreadListV2OrderedSection,
   layoutThreadListV2RowMenuActions,
+  resolveThreadListV2SnoozeMenuActions,
   resolveThreadListV2SnoozeMenuSelection,
   resolveThreadListV2SwipeActions,
   resolveThreadListV2SnoozePresets,
@@ -81,6 +82,35 @@ describe("resolveThreadListV2SnoozeMenuSelection", () => {
         new Date(selectedAt.getTime() + 6 * 60 * 60 * 1_000).toISOString(),
       );
     }
+  });
+
+  it("routes Custom and Until threads settle to their pickers", () => {
+    const select = (event: string) =>
+      resolveThreadListV2SnoozeMenuSelection({
+        event,
+        displayedPresets: [],
+        now: new Date(2026, 4, 8, 10),
+        presets: undefined,
+      })._tag;
+
+    expect(select("snooze:custom")).toBe("custom");
+    expect(select("snooze:until-settled")).toBe("until-settled");
+    expect(select("archive")).toBe("not-snooze");
+  });
+});
+
+describe("resolveThreadListV2SnoozeMenuActions", () => {
+  it("offers Until threads settle after Custom only where the server supports it", () => {
+    const presets = resolveSnoozePresets(new Date(2026, 4, 8, 10), {
+      presets: [{ kind: "after", minutes: 60 }],
+    });
+    const ids = (untilSettledSupported: boolean) =>
+      resolveThreadListV2SnoozeMenuActions({ presets, untilSettledSupported }).map(
+        (action) => action.id,
+      );
+
+    expect(ids(true)).toEqual(["snooze:after:60", "snooze:custom", "snooze:until-settled"]);
+    expect(ids(false)).toEqual(["snooze:after:60", "snooze:custom"]);
   });
 });
 
@@ -1588,6 +1618,58 @@ describe("thread list Woke marker", () => {
         { now: isoAt(BASE_MS + 2 * MINUTE_MS) },
       ),
     ).toBeNull();
+  });
+
+  it("names a wake on threads settling, but not a wake at the cap they did not explain", () => {
+    const dependencyId = ThreadId.make("dependency");
+    const waiter = { ...thread, snoozeUntilSettledThreadIds: [dependencyId] };
+    const wokeItem = (dependency: EnvironmentThreadShell) => {
+      const item = buildThreadListV2Items({
+        threads: [waiter, dependency],
+        environmentId: null,
+        searchQuery: "",
+        now: NOW,
+      }).items.find((candidate) => candidate.thread.id === waiter.id);
+      return { wokeAt: item?.wokeAt, wokeLabel: item?.wokeLabel };
+    };
+    const open = makeThread({ id: dependencyId, title: "dependency" });
+
+    // The server's wake moves `snoozedUntil` to when the last thread settled.
+    expect(wokeItem({ ...open, settledOverride: "settled", settledAt: wokeAt })).toEqual({
+      wokeAt,
+      wokeLabel: "Threads settled",
+    });
+    expect(wokeItem(open)).toEqual({ wokeAt, wokeLabel: null });
+    expect(wokeItem({ ...open, settledOverride: "settled", settledAt: NOW })).toEqual({
+      wokeAt,
+      wokeLabel: null,
+    });
+  });
+
+  it("shows how many threads a snooze waits on instead of its 30-day cap", () => {
+    const waiting = makeThread({
+      id: ThreadId.make("waiting"),
+      title: "waiting",
+      snoozedAt: NOW,
+      snoozedUntil: isoAt(BASE_MS + 30 * 24 * 60 * MINUTE_MS),
+      snoozeUntilSettledThreadIds: [ThreadId.make("first"), ThreadId.make("second")],
+    });
+    const [row] = buildThreadListV2ListItems({
+      items: buildThreadListV2Items({
+        threads: [waiting],
+        environmentId: null,
+        searchQuery: "",
+        now: NOW,
+        snoozedShelfExpanded: true,
+      }).items,
+      pendingTasks: [],
+      snoozedShelfExpanded: true,
+      snoozeLabelNow: NOW,
+    });
+
+    expect(row?.type === "v2-thread" && row.snoozeWaitingThreadCount).toBe(2);
+    expect(row?.type === "v2-thread" && row.snoozeWakeLabelText).toBeUndefined();
+    expect(row?.type === "v2-thread" && row.timeLabel).toBe("");
   });
 
   it("updates a recycled row at the wake boundary even without a new shell or minute tick", () => {
