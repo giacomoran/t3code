@@ -64,6 +64,10 @@ stops on a modify/delete conflict: keep it deleted. An upstream test that expect
 `MessagesTimeline` still declares `onCiteAssistantText` so its callers upstream keep
 compiling unchanged. It is never read.
 
+Web and desktop only. Since v0.1.11 the mobile app can cite selected assistant text too
+(upstream #35306), from the native selection menu rather than a button that appears on
+every selection, so the fork leaves it in.
+
 ### 4. An empty list marker that starts a list stays
 
 In the composer, Enter on an empty item continues or exits a list. Upstream removes the
@@ -288,6 +292,15 @@ lists them. After a rebase, grep `Orchestrator.ts` for new places that clear
 
 If a rebase conflicts, it will almost always be one of these small hunks.
 
+Since v0.1.11 upstream translates the whole app (see
+[Translating the UI](docs/internals/i18n.md)), and lint rejects English copy that is not
+wrapped. The fork's copy follows the same rules: `<T>`, `gt()` or `msg()`, and shared
+helpers in `client-runtime` take a `resolve` argument instead of building a sentence from
+English fragments (`snoozedUntilSettledLabel`, not `"Snoozed " + phrase`). After adding or
+changing copy, run `vp run i18n:generate` in `apps/web` and `apps/mobile`, then
+`node scripts/i18n-check.ts`. The fork's keys are left English in every locale; untranslated
+keys render in English.
+
 Upstream's lint and Effect diagnostics also tighten between releases (comment length,
 arbitrary Tailwind values, em dashes in copy, `Effect.fn` over `Effect.gen` wrappers),
 and the pre-commit hook enforces them, so after a rebase run `vp lint` on the files
@@ -390,7 +403,7 @@ the Linux CLI archive:
    the binary reports, so the fork needs a version of its own.
 2. Builds the web client and server bundle, the Rust resource monitor, and the single
    executable. The executable step runs on `engines.node` from the root `package.json`
-   (26.13.1 at v0.1.10, installed through mise), because `vp pack` needs a Node 25.7+ host
+   (26.13.1 at v0.1.11, installed through mise), because `vp pack` needs a Node 25.7+ host
    and `apps/server/vite.config.ts` refuses any other version.
 3. Packs the CLI archive, then refuses to install it if it lacks the fork's markers or
    reports the wrong version.
@@ -434,8 +447,8 @@ cd apps/server; and pnpm test; and cd -
 ```
 
 On the pinned Node 24, some server tests fail upstream too, because they call APIs only
-Node 25+ has (`StatementSync.stat`, `Uint8Array.fromBase64`): at v0.1.10, the turn-item
-window test in `ProjectionStore.test.ts`, one in `Orchestrator.control-reads.test.ts` and
+Node 25+ has (`StatementSync.stat`, `Uint8Array.fromBase64`): at v0.1.11, the turn-item
+window test in `ProjectionStore.test.ts`, two in `Orchestrator.control-reads.test.ts` and
 the recording tests in `ServerBrowser.test.ts`. Rerun them with
 `mise exec node@<engines.node> -- pnpm exec vp test run <files>` before suspecting the fork.
 
