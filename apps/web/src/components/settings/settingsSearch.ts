@@ -434,7 +434,8 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "chat-font-size",
-    title: "Chat font size",
+    title: msg("Chat font size"),
+    searchTerms: [msg("typography size messages transcript text reading")],
     to: "/settings/appearance",
   },
   {

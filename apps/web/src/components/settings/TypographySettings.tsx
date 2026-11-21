@@ -190,17 +190,20 @@ function CodeFontRow({
 }
 
 function ChatFontSizeRow() {
+  const gt = useGT();
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   return (
     <SettingsRow
       {...searchableSetting("chat-font-size")}
-      title="Chat font size"
-      description="Message text in the chat transcript. Code blocks follow the code font size."
+      description={gt(
+        "Message text in the chat transcript. Code blocks follow the code font size.",
+      )}
       resetAction={
         settings.fontSizeChat !== DEFAULT_UNIFIED_SETTINGS.fontSizeChat ? (
           <SettingResetButton
-            label="chat font size"
+            ariaLabel={gt("Reset chat font size to default")}
             onClick={() => updateSettings({ fontSizeChat: DEFAULT_UNIFIED_SETTINGS.fontSizeChat })}
           />
         ) : null
@@ -220,8 +223,8 @@ function ChatFontSizeRow() {
             }
           }}
         >
-          <SelectTrigger className="w-22 shrink-0" aria-label="Chat font size">
-            <SelectValue>{settings.fontSizeChat} px</SelectValue>
+          <SelectTrigger className="w-22 shrink-0" aria-label={gt("Chat font size")}>
+            <SelectValue>{gt("{size} px", { size: settings.fontSizeChat })}</SelectValue>
           </SelectTrigger>
           <SelectPopup align="end" alignItemWithTrigger={false}>
             {Array.from(
@@ -229,7 +232,7 @@ function ChatFontSizeRow() {
               (_, index) => MIN_CHAT_FONT_SIZE + index,
             ).map((px) => (
               <SelectItem hideIndicator key={px} value={String(px)}>
-                {px} px
+                {gt("{size} px", { size: px })}
               </SelectItem>
             ))}
           </SelectPopup>
@@ -615,7 +618,7 @@ function FontFamilySettingsRow({
           {Array.from({ length: size.max - size.min + 1 }, (_, index) => size.min + index).map(
             (px) => (
               <SelectItem hideIndicator key={px} value={String(px)}>
-                {px} px
+                {gt("{size} px", { size: px })}
               </SelectItem>
             ),
           )}
