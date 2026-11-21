@@ -1,5 +1,6 @@
 import { type ModelProfile, MAX_MODEL_PROFILES } from "@t3tools/contracts";
 import { BookmarkPlusIcon, CheckIcon, Trash2Icon } from "lucide-react";
+import { T, useGT } from "gt-react";
 import { memo, useState } from "react";
 
 import { cn } from "~/lib/utils";
@@ -55,6 +56,7 @@ export const ModelProfilesBar = memo(function ModelProfilesBar({
   onSave: (name: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const gt = useGT();
   const [isOpen, setIsOpen] = useState(false);
   const [draftName, setDraftName] = useState("");
 
@@ -92,11 +94,13 @@ export const ModelProfilesBar = memo(function ModelProfilesBar({
             {profiles.length === 0 ? (
               <>
                 <BookmarkPlusIcon aria-hidden="true" className="size-4" />
-                <span>Save profile</span>
+                <T>
+                  <span>Save profile</span>
+                </T>
               </>
             ) : (
               <span className={cn("max-w-40 truncate", activeProfile && "text-foreground")}>
-                {activeProfile?.name ?? "Profiles"}
+                {activeProfile?.name ?? gt("Profiles")}
               </span>
             )}
           </ComposerControl>
@@ -137,7 +141,7 @@ export const ModelProfilesBar = memo(function ModelProfilesBar({
                       size="icon"
                       variant="ghost"
                       className="size-6 shrink-0"
-                      aria-label={`Delete ${profile.name}`}
+                      aria-label={gt("Delete {name}", { name: profile.name })}
                       onClick={() => onDelete(profile.id)}
                     >
                       <Trash2Icon aria-hidden="true" className="size-3.5" />
@@ -151,7 +155,9 @@ export const ModelProfilesBar = memo(function ModelProfilesBar({
           <div
             className={cn("space-y-1", profiles.length > 0 && "border-border/70 border-t pt-1.5")}
           >
-            <p className="px-1.5 font-medium text-secondary-label text-xs">Save current setup</p>
+            <p className="px-1.5 font-medium text-secondary-label text-xs">
+              <T>Save current setup</T>
+            </p>
             <div className="flex items-center gap-1.5">
               <Input
                 autoFocus
@@ -177,12 +183,14 @@ export const ModelProfilesBar = memo(function ModelProfilesBar({
                 disabled={!canSave}
                 onClick={save}
               >
-                Save
+                <T>Save</T>
               </Button>
             </div>
             {isFull ? (
               <p className="px-1.5 text-2xs text-muted-foreground">
-                {MAX_MODEL_PROFILES} profiles is the limit. Delete one to add another.
+                {gt("{max} profiles is the limit. Delete one to add another.", {
+                  max: MAX_MODEL_PROFILES,
+                })}
               </p>
             ) : null}
           </div>
