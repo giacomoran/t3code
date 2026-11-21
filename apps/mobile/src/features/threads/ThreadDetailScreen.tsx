@@ -16,7 +16,10 @@ import { parseThreadKey, threadKey } from "@t3tools/client-runtime/state/entitie
 import { createThreadVisitTracker } from "@t3tools/client-runtime/state/thread-visits";
 import { useChildThreadInputs, useThreadReportedModelSelection } from "../../state/entities";
 import { useSnoozeUntilSettledStates } from "../../state/snooze-until-settled";
-import { presentThreadSnoozeUntilSettled } from "@t3tools/client-runtime/state/thread-snooze-until-settled";
+import {
+  presentThreadSnoozeUntilSettled,
+  snoozedUntilSettledLabel,
+} from "@t3tools/client-runtime/state/thread-snooze-until-settled";
 import { UsageLimitRecoveryCard } from "./UsageLimitRecoveryCard";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import {
@@ -671,6 +674,7 @@ function ThreadDetailBody(
   const snoozeUntilSettled = presentThreadSnoozeUntilSettled(props.selectedThread, {
     now: lifecycleNow,
     threadById: (threadId) => snoozeUntilSettledStates.get(threadId),
+    resolve: messages,
   });
   const runStatusAction = async (action: "stop" | "wake" | "unsettle" | "dismiss") => {
     const permitted =
@@ -804,8 +808,8 @@ function ThreadDetailBody(
       key: "lifecycle",
       icon: settled && !lifecycleSnoozed ? "checkmark.circle" : "alarm",
       label: lifecycleSnoozed
-        ? snoozeUntilSettled.waitingPhrase !== null
-          ? `Snoozed ${snoozeUntilSettled.waitingPhrase}`
+        ? snoozeUntilSettled.waitingCount !== null
+          ? snoozedUntilSettledLabel(snoozeUntilSettled.waitingCount, messages)
           : wake === null
             ? gt("Snoozed", { $context: "thread state" })
             : gt("Snoozed, {time} left", { time: wake })

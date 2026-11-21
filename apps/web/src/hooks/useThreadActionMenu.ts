@@ -294,7 +294,7 @@ export function useThreadActionMenu(input: {
           return;
         case "mute-notifications":
         case "unmute-notifications":
-          await reportFailure("Failed to update thread notifications", () =>
+          await reportFailure(m(msg("Failed to update thread notifications")), () =>
             updateThreadMetadata({
               environmentId: threadRef.environmentId,
               input: {

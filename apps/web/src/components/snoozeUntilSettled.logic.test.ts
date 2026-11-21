@@ -144,7 +144,7 @@ describe("presentSnoozeUntilSettled", () => {
       }),
     ).toEqual({
       threadCount: 3,
-      waitingPhrase: "until 3 threads settle",
+      waitingCount: 3,
       waitingOn: [
         { threadId: first, title: "Title thread-first", isSettled: true },
         { threadId: second, title: "Title thread-second", isSettled: true },

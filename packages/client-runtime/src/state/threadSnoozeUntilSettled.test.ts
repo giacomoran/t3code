@@ -10,7 +10,7 @@ import {
   presentThreadSnoozeUntilSettled,
   resolveSnoozeUntilSettledCandidates,
   snoozeCandidateStatus,
-  snoozeUntilSettledPhrase,
+  snoozedUntilSettledLabel,
   toggleSnoozeUntilSettledSelection,
   type SnoozeCandidateStatus,
   type SnoozeCandidateThread,
@@ -46,50 +46,50 @@ describe("presentThreadSnoozeUntilSettled", () => {
       name: "waits on the listed threads",
       shell: shell({ snoozedUntil: CAP, threadIds: [first, second] }),
       threadById: () => open,
-      expected: { waitingPhrase: "until 2 threads settle", wokeLabel: null },
+      expected: { waitingCount: 2, wokeLabel: null },
     },
     {
       name: "says why it woke once they all settled or went away",
       shell: shell({ snoozedUntil: NOW, threadIds: [first, second] }),
       threadById: (threadId: ThreadId) => (threadId === first ? settled : undefined),
-      expected: { waitingPhrase: null, wokeLabel: "Threads settled" },
+      expected: { waitingCount: null, wokeLabel: "Threads settled" },
     },
     {
       name: "gives a cap wake no reason while a listed thread is still open",
       shell: shell({ snoozedUntil: NOW, threadIds: [first, second] }),
       threadById: (threadId: ThreadId) => (threadId === first ? settled : open),
-      expected: { waitingPhrase: null, wokeLabel: null },
+      expected: { waitingCount: null, wokeLabel: null },
     },
     {
       name: "counts an archived thread as finished",
       shell: shell({ snoozedUntil: NOW, threadIds: [first] }),
       threadById: () => archived,
-      expected: { waitingPhrase: null, wokeLabel: "Threads settled" },
+      expected: { waitingCount: null, wokeLabel: "Threads settled" },
     },
     {
       name: "gives a cap wake no reason once a thread settles after it",
       shell: shell({ snoozedUntil: NOW, threadIds: [first, second] }),
       threadById: (threadId: ThreadId) =>
         threadId === first ? settled : { ...settled, settledAt: AFTER_NOW },
-      expected: { waitingPhrase: null, wokeLabel: null },
+      expected: { waitingCount: null, wokeLabel: null },
     },
     {
       name: "gives a cap wake no reason once a thread is archived after it",
       shell: shell({ snoozedUntil: NOW, threadIds: [first] }),
       threadById: () => ({ ...archived, archivedAt: AFTER_NOW }),
-      expected: { waitingPhrase: null, wokeLabel: null },
+      expected: { waitingCount: null, wokeLabel: null },
     },
     {
       name: "gives a wake on a request no reason",
       shell: shell({ snoozedUntil: CAP, threadIds: [first], pendingApproval: true }),
       threadById: () => settled,
-      expected: { waitingPhrase: null, wokeLabel: null },
+      expected: { waitingCount: null, wokeLabel: null },
     },
     {
       name: "leaves a time snooze alone",
       shell: shell({ snoozedUntil: CAP, threadIds: null }),
       threadById: () => settled,
-      expected: { waitingPhrase: null, wokeLabel: null },
+      expected: { waitingCount: null, wokeLabel: null },
     },
   ])("$name", ({ shell, threadById, expected }) => {
     expect(presentThreadSnoozeUntilSettled(shell, { now: NOW, threadById })).toMatchObject(
@@ -98,7 +98,8 @@ describe("presentThreadSnoozeUntilSettled", () => {
   });
 
   it("names one thread in the singular", () => {
-    expect(snoozeUntilSettledPhrase(1)).toBe("until 1 thread settles");
+    expect(snoozedUntilSettledLabel(1)).toBe("Snoozed until 1 thread settles");
+    expect(snoozedUntilSettledLabel(3)).toBe("Snoozed until 3 threads settle");
   });
 });
 

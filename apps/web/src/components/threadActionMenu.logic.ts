@@ -217,7 +217,12 @@ export function buildThreadActionMenuItems(
                     separatorBefore: state.snoozePresets.length > 0,
                   },
                   ...(state.supports.snoozeUntilSettled
-                    ? [{ id: "snooze:until-settled" as const, label: "Until threads settle…" }]
+                    ? [
+                        {
+                          id: "snooze:until-settled" as const,
+                          label: resolve(msg("Until threads settle…")),
+                        },
+                      ]
                     : []),
                 ],
               },

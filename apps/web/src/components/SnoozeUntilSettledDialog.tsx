@@ -2,9 +2,9 @@ import { useEffect, useId, useState, type KeyboardEvent } from "react";
 import { create } from "zustand";
 import {
   resolveSnoozeUntilSettledCandidates,
-  SNOOZE_UNTIL_SETTLED_LIMIT_HINT,
   snoozeCandidateStatus,
-  snoozeUntilSettledPhrase,
+  snoozeUntilSettledActionLabel,
+  snoozeUntilSettledLimitHint,
   toggleSnoozeUntilSettledSelection,
   type SnoozeCandidateStatus,
   type SnoozeCandidateStatusFilter,
@@ -17,6 +17,7 @@ import {
   type ProjectId,
   type ThreadId,
 } from "@t3tools/contracts";
+import { msg, T, useGT, useMessages } from "gt-react";
 import { ArrowDownIcon, ArrowUpIcon, SearchIcon, XIcon } from "lucide-react";
 
 import { useNowMinute } from "../hooks/useNowMinute";
@@ -95,16 +96,19 @@ const STATUS_FILTERS: ReadonlyArray<{
   readonly value: SnoozeCandidateStatusFilter;
   readonly label: string;
 }> = [
-  { value: "all", label: "All" },
-  { value: "working", label: "Working" },
-  { value: "attention", label: "Needs attention" },
-  { value: "idle", label: "Idle" },
+  { value: "all", label: msg("All", { $context: "thread status filter" }) },
+  { value: "working", label: msg("Working", { $context: "thread status" }) },
+  { value: "attention", label: msg("Needs attention") },
+  { value: "idle", label: msg("Idle", { $context: "thread status" }) },
 ];
 
 const STATUS_PRESENTATION = {
-  working: { label: "Working", className: "text-info-foreground" },
-  attention: { label: "Needs attention", className: "text-warning-foreground" },
-  idle: { label: "Idle", className: "text-muted-foreground" },
+  working: {
+    label: msg("Working", { $context: "thread status" }),
+    className: "text-info-foreground",
+  },
+  attention: { label: msg("Needs attention"), className: "text-warning-foreground" },
+  idle: { label: msg("Idle", { $context: "thread status" }), className: "text-muted-foreground" },
 } satisfies Record<SnoozeCandidateStatus, { label: string; className: string }>;
 
 const ALL_PROJECTS = "all";
@@ -115,6 +119,8 @@ function statusOf(thread: EnvironmentThreadShell): SnoozeCandidateStatus {
 
 function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
   const { environmentId, excludeThreadIds } = props;
+  const gt = useGT();
+  const messages = useMessages();
   const listId = useId();
   const nowMinute = useNowMinute();
   // The tick is a UTC minute without a zone; read as local time it would shift by the offset.
@@ -244,10 +250,10 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
   const nowMs = Date.parse(nowIso);
   const emptyMessage =
     openThreads.length === 0
-      ? "No other open threads in this environment to wait on."
+      ? gt("No other open threads in this environment to wait on.")
       : messageSearch.isPending
-        ? "Searching…"
-        : "No threads match.";
+        ? gt("Searching…")
+        : gt("No threads match.");
 
   return (
     <Dialog
@@ -258,11 +264,12 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
     >
       <DialogPopup className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Snooze until threads settle</DialogTitle>
+          <DialogTitle>{gt("Snooze until threads settle")}</DialogTitle>
           <DialogDescription>
-            {snoozedCount === 1 ? "This thread returns" : `These ${snoozedCount} threads return`} to
-            your inbox once every thread you pick is settled, archived, or deleted, or after 30
-            days.
+            {gt(
+              "{count, plural, =1 {This thread returns} other {These {count} threads return}} to your inbox once every thread you pick is settled, archived, or deleted, or after 30 days.",
+              { count: snoozedCount },
+            )}
           </DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-col gap-3 px-6 pb-4">
@@ -271,12 +278,12 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
             type="search"
             size="lg"
             role="combobox"
-            aria-label="Search threads"
+            aria-label={gt("Search threads")}
             aria-controls={listId}
             aria-expanded
             aria-autocomplete="list"
             aria-activedescendant={highlighted === null ? undefined : optionId(highlighted)}
-            placeholder="Search titles, projects, and messages…"
+            placeholder={gt("Search titles, projects, and messages…")}
             value={query}
             onChange={(event) => {
               const value = event.target.value;
@@ -288,7 +295,7 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
             <Select
               value={projectId ?? ALL_PROJECTS}
               items={{
-                [ALL_PROJECTS]: "All projects",
+                [ALL_PROJECTS]: gt("All projects"),
                 ...Object.fromEntries(
                   projectOptions.map((option) => [option.projectId, option.title]),
                 ),
@@ -298,11 +305,11 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
                 narrow(() => setProjectId(option?.projectId ?? null));
               }}
             >
-              <SelectTrigger size="sm" className="w-auto min-w-36" aria-label="Project">
+              <SelectTrigger size="sm" className="w-auto min-w-36" aria-label={gt("Project")}>
                 <SelectValue />
               </SelectTrigger>
               <SelectPopup>
-                <SelectItem value={ALL_PROJECTS}>All projects</SelectItem>
+                <SelectItem value={ALL_PROJECTS}>{gt("All projects")}</SelectItem>
                 {projectOptions.map((option) => (
                   <SelectItem key={option.projectId} value={option.projectId}>
                     {option.title}
@@ -311,7 +318,7 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
               </SelectPopup>
             </Select>
             <ToggleGroup
-              aria-label="Status"
+              aria-label={gt("Status")}
               value={[status]}
               onValueChange={(next) => {
                 const value = STATUS_FILTERS.find((filter) => filter.value === next[0])?.value;
@@ -320,13 +327,13 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
             >
               {STATUS_FILTERS.map((filter) => (
                 <Toggle key={filter.value} value={filter.value}>
-                  {filter.label}
+                  {messages(filter.label)}
                 </Toggle>
               ))}
             </ToggleGroup>
           </div>
           {selectedThreads.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5" aria-label="Picked threads">
+            <div className="flex flex-wrap gap-1.5" aria-label={gt("Picked threads")}>
               {selectedThreads.map((thread) => (
                 <Badge key={thread.id} variant="outline" size="lg" className="max-w-full">
                   <span className="truncate">{thread.title}</span>
@@ -334,7 +341,7 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
                     type="button"
                     size="icon-micro"
                     variant="ghost-muted"
-                    aria-label={`Remove ${thread.title}`}
+                    aria-label={gt("Remove {title}", { title: thread.title })}
                     onClick={() => toggle(thread.id)}
                   >
                     <XIcon />
@@ -344,12 +351,12 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
             </div>
           ) : null}
           {selectedThreadIds.length >= THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS ? (
-            <p className="text-muted-foreground text-xs">{SNOOZE_UNTIL_SETTLED_LIMIT_HINT}</p>
+            <p className="text-muted-foreground text-xs">{snoozeUntilSettledLimitHint(messages)}</p>
           ) : null}
           <div
             id={listId}
             role="listbox"
-            aria-label="Threads"
+            aria-label={gt("Threads")}
             aria-multiselectable
             className="-mx-2 max-h-[min(22rem,50vh)] min-h-24 overflow-y-auto"
           >
@@ -390,7 +397,7 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
                           </>
                         )}
                         <span className={cn("shrink-0", threadStatus.className)}>
-                          {threadStatus.label}
+                          {messages(threadStatus.label)}
                         </span>
                         {activityAt === null ? null : (
                           <>
@@ -417,19 +424,25 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
               <Kbd>
                 <ArrowDownIcon />
               </Kbd>
-              <span>Navigate</span>
+              <T>
+                <span>Navigate</span>
+              </T>
             </KbdGroup>
             <KbdGroup>
               <Kbd>Space</Kbd>
-              <span>Pick</span>
+              <T>
+                <span>Pick</span>
+              </T>
             </KbdGroup>
             <KbdGroup>
               <Kbd>Enter</Kbd>
-              <span>Snooze</span>
+              <T>
+                <span>Snooze</span>
+              </T>
             </KbdGroup>
           </div>
           <Button type="button" variant="outline" onClick={() => finish(null)}>
-            Cancel
+            <T>Cancel</T>
           </Button>
           <Button
             type="button"
@@ -437,8 +450,8 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
             onClick={() => confirm(selectedThreads.map((thread) => thread.id))}
           >
             {selectedThreads.length === 0
-              ? "Snooze"
-              : `Snooze ${snoozeUntilSettledPhrase(selectedThreads.length)}`}
+              ? gt("Snooze", { $context: "button: snooze the thread" })
+              : snoozeUntilSettledActionLabel(selectedThreads.length, messages)}
           </Button>
         </DialogFooter>
       </DialogPopup>

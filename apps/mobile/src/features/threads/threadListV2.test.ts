@@ -32,6 +32,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import { makeRawThreadShell, makeThreadShellFixture } from "../../test-fixtures";
 import { threadJumpTarget } from "../keyboard/threadKeyboardShortcuts";
+import { m } from "../../i18n/messages";
 import {
   buildThreadListV2Items,
   buildThreadListV2ListItems,
@@ -1630,7 +1631,8 @@ describe("thread list Woke marker", () => {
         searchQuery: "",
         now: NOW,
       }).items.find((candidate) => candidate.thread.id === waiter.id);
-      return { wokeAt: item?.wokeAt, wokeLabel: item?.wokeLabel };
+      // The layout keeps the label marked; rows resolve it.
+      return { wokeAt: item?.wokeAt, wokeLabel: item?.wokeLabel && m(item.wokeLabel) };
     };
     const open = makeThread({ id: dependencyId, title: "dependency" });
 

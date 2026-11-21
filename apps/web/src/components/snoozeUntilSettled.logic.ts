@@ -3,12 +3,16 @@ import type { ThreadSnoozeShell } from "@t3tools/client-runtime/state/thread-set
 import {
   isSnoozeDependencyDone,
   presentThreadSnoozeUntilSettled,
+  snoozedUntilSettledLabel,
 } from "@t3tools/client-runtime/state/thread-snooze-until-settled";
 import {
   THREAD_SNOOZE_UNTIL_SETTLED_CAP_MS,
   type ProjectId,
   type ThreadId,
 } from "@t3tools/contracts";
+import { msg } from "gt-react";
+
+import { m, type MessageResolver } from "../i18n/messages";
 
 import type { SnoozeChoice } from "./Sidebar.snooze";
 
@@ -111,8 +115,8 @@ interface SnoozeWaitingOnThread {
 export interface SnoozeUntilSettledState {
   /** How many threads the snooze waits on, loaded or not. */
   readonly threadCount: number;
-  /** "until 2 threads settle" while snoozed waiting on them. */
-  readonly waitingPhrase: string | null;
+  /** How many threads the snooze still waits on while snoozed. */
+  readonly waitingCount: number | null;
   /** The listed threads the client has loaded, in the order they were picked. */
   readonly waitingOn: ReadonlyArray<SnoozeWaitingOnThread>;
   /** "Threads settled" when that is why the thread woke. */
@@ -134,6 +138,7 @@ export function presentSnoozeUntilSettled(
         "id" | "environmentId" | "title" | "settledOverride" | "settledAt" | "archivedAt"
       >
     >;
+    readonly resolve?: MessageResolver;
   },
 ): SnoozeUntilSettledState | null {
   if ((thread.snoozeUntilSettledThreadIds ?? []).length === 0) return null;
@@ -145,10 +150,11 @@ export function presentSnoozeUntilSettled(
   const presentation = presentThreadSnoozeUntilSettled(thread, {
     now: options.now,
     threadById: (threadId) => shellById.get(threadId),
+    resolve: options.resolve ?? m,
   });
   return {
     threadCount: presentation.threadIds.length,
-    waitingPhrase: presentation.waitingPhrase,
+    waitingCount: presentation.waitingCount,
     waitingOn: presentation.threadIds.flatMap((threadId) => {
       const shell = shellById.get(threadId);
       if (shell === undefined) return [];
@@ -166,11 +172,17 @@ export function presentSnoozeUntilSettled(
 
 /** "Snoozed until 2 threads settle: Fix login, Refactor API" for the thread view. */
 export function snoozeUntilSettledStatusLabel(
-  state: Pick<SnoozeUntilSettledState, "waitingPhrase" | "waitingOn">,
+  state: Pick<SnoozeUntilSettledState, "waitingCount" | "waitingOn">,
+  resolve: MessageResolver = m,
 ): string {
-  if (state.waitingPhrase === null) throw new Error("The snooze is not waiting on threads");
+  if (state.waitingCount === null) throw new Error("The snooze is not waiting on threads");
   const titles = state.waitingOn.map((thread) => thread.title);
   return titles.length === 0
-    ? `Snoozed ${state.waitingPhrase}`
-    : `Snoozed ${state.waitingPhrase}: ${titles.join(", ")}`;
+    ? snoozedUntilSettledLabel(state.waitingCount, resolve)
+    : resolve(
+        msg(
+          "Snoozed until {count, plural, one {{count} thread settles} other {{count} threads settle}}: {titles}",
+          { count: state.waitingCount, titles: titles.join(", ") },
+        ),
+      );
 }

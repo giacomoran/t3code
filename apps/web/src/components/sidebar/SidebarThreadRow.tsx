@@ -1,5 +1,6 @@
 import { useAtomMount, useAtomValue } from "@effect/atom-react";
 import { asLaunchingThread } from "@t3tools/client-runtime/state/thread-inbox";
+import { snoozedUntilSettledLabel } from "@t3tools/client-runtime/state/thread-snooze-until-settled";
 import { ThreadHoverCard, ThreadHoverCardTrigger } from "../ThreadHoverCard";
 import { ThreadTerminalStatusButton } from "../ThreadStatusIndicators";
 import { discardComposerDraft } from "../../lib/discardComposerDraft";
@@ -345,26 +346,32 @@ function SidebarThreadTooltip({
           ) : null
         }
       >
-        {snoozeUntilSettled?.waitingPhrase ? (
+        {snoozeUntilSettled?.waitingCount != null ? (
           <div className="flex min-w-0 flex-col gap-1">
             <div className="flex min-w-0 items-center gap-2">
               <HourglassIcon aria-hidden className="size-3 shrink-0 stroke-muted-foreground" />
               <div className="min-w-0 text-foreground/75">
-                {`Snoozed ${snoozeUntilSettled.waitingPhrase}`}
-                {snoozeWakeLabelText !== null && snoozeWakeLabelText !== "now"
-                  ? `, or in ${snoozeWakeLabelText}`
-                  : null}
+                {snoozeWakeLabelText !== null &&
+                snoozeWakeLabelText !== m(msg("now", { $context: "a snoozed thread wakes now" }))
+                  ? gt(
+                      "Snoozed until {count, plural, one {{count} thread settles} other {{count} threads settle}}, or in {time}",
+                      { count: snoozeUntilSettled.waitingCount, time: snoozeWakeLabelText },
+                    )
+                  : snoozedUntilSettledLabel(snoozeUntilSettled.waitingCount, m)}
               </div>
             </div>
             {snoozeUntilSettled.waitingOn.map((waitingOn) => (
               <div key={waitingOn.threadId} className="flex min-w-0 items-center gap-2 pl-5">
                 {waitingOn.isSettled ? (
                   <CheckIcon
-                    aria-label="Settled"
+                    aria-label={gt("Settled", { $context: "thread state" })}
                     className="size-3 shrink-0 text-success-foreground"
                   />
                 ) : (
-                  <CircleDashedIcon aria-label="Open" className="size-3 shrink-0" />
+                  <CircleDashedIcon
+                    aria-label={gt("Open", { $context: "thread state, not settled yet" })}
+                    className="size-3 shrink-0"
+                  />
                 )}
                 <div className="min-w-0 truncate text-foreground/75">{waitingOn.title}</div>
               </div>
@@ -801,6 +808,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const snoozeUntilSettled = presentSnoozeUntilSettled(thread, {
     now: props.snoozeNow,
     shells: snoozeUntilSettledShells,
+    resolve: messages,
   });
   const canOperateThread = useEnvironmentScope(thread.environmentId, AuthOrchestrationOperateScope);
   const canTriageThread = !useEnvironmentScopeDenied(
@@ -1359,7 +1367,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const muteIndicator =
     thread.notificationsMuted === true ? (
       <BellOffIcon
-        aria-label="Notifications muted"
+        aria-label={gt("Notifications muted")}
         role="img"
         className="size-3 shrink-0 text-muted-foreground/65"
       />
@@ -1511,12 +1519,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     </span>
                   ) : variantAction === "unsnooze" &&
                     props.snoozeWakeLabelText !== null &&
-                    snoozeUntilSettled?.waitingPhrase ? (
+                    snoozeUntilSettled?.waitingCount != null ? (
                     <span className="inline-flex items-center gap-1 text-xs text-info-foreground tabular-nums">
                       {/* An hourglass sets a wait on threads apart from a wake time. */}
                       <HourglassIcon aria-hidden className="size-3" />
                       <span aria-hidden>{snoozeUntilSettled.threadCount}</span>
-                      <span className="sr-only">{`Snoozed ${snoozeUntilSettled.waitingPhrase}`}</span>
+                      <span className="sr-only">
+                        {snoozedUntilSettledLabel(snoozeUntilSettled.waitingCount, messages)}
+                      </span>
                     </span>
                   ) : variantAction === "unsnooze" && props.snoozeWakeLabelText !== null ? (
                     <span className="inline-flex items-center gap-1 text-xs text-info-foreground tabular-nums">

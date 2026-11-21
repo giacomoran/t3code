@@ -1,8 +1,8 @@
 import { useAtomValue } from "@effect/atom-react";
 import { LegendList } from "@legendapp/list/react-native";
 import {
-  SNOOZE_UNTIL_SETTLED_LIMIT_HINT,
-  snoozeUntilSettledPhrase,
+  snoozeUntilSettledActionLabel,
+  snoozeUntilSettledLimitHint,
   toggleSnoozeUntilSettledSelection,
   type SnoozeCandidateStatusFilter,
 } from "@t3tools/client-runtime/state/thread-snooze-until-settled";
@@ -12,6 +12,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import * as Haptics from "expo-haptics";
+import { useGT, useMessages } from "gt-react-native";
 import { useRef, useState } from "react";
 import { Modal, Platform, ScrollView, View, type TextInputInstance } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
@@ -54,6 +55,8 @@ function SnoozeUntilSettledSheet(props: {
   readonly onFinish: (threadIds: ReadonlyArray<ThreadId> | null) => void;
 }) {
   const { environmentId, excludeThreadIds } = props.request;
+  const gt = useGT();
+  const messages = useMessages();
   const threads = useNavigationThreadShells();
   const projects = useProjects();
   const connected = useAtomValue(connectedEnvironmentIdsAtom).includes(environmentId);
@@ -86,6 +89,7 @@ function SnoozeUntilSettledSheet(props: {
     projectId,
     status,
     nowMs,
+    resolve: messages,
   });
   const selectedCount = picker.selectedThreads.length;
   const selectedProject = picker.projectOptions.find((project) => project.id === projectId);
@@ -109,24 +113,24 @@ function SnoozeUntilSettledSheet(props: {
             <KeyboardAvoidingView behavior="padding" className="flex-1">
               <SheetHeader
                 presentation="inline"
-                title="Snooze until threads settle"
+                title={gt("Snooze until threads settle")}
                 subtitle={
                   selectedThreadIds.length >= THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS
-                    ? SNOOZE_UNTIL_SETTLED_LIMIT_HINT
+                    ? snoozeUntilSettledLimitHint(messages)
                     : selectedCount === 0
-                      ? "Wakes when every picked thread settles"
-                      : `${selectedCount} selected`
+                      ? gt("Wakes when every picked thread settles")
+                      : gt("{count} selected", { count: selectedCount })
                 }
                 onCancel={cancel}
-                accessibilityLabel="Cancel snooze until threads settle"
+                accessibilityLabel={gt("Cancel snooze until threads settle")}
               />
               <View className="flex-row px-5 pb-2">
                 <SearchField
                   inputRef={searchInputRef}
                   autoFocus={false}
-                  accessibilityLabel="Search threads"
-                  clearAccessibilityLabel="Clear thread search"
-                  placeholder="Search titles, projects, and messages"
+                  accessibilityLabel={gt("Search threads")}
+                  clearAccessibilityLabel={gt("Clear thread search")}
+                  placeholder={gt("Search titles, projects, and messages")}
                   value={query}
                   onChangeText={setQuery}
                 />
@@ -139,11 +143,15 @@ function SnoozeUntilSettledSheet(props: {
                 contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 6, gap: 8 }}
               >
                 <ListFilterMenu
-                  label={selectedProject?.title ?? "All projects"}
-                  accessibilityLabel="Filter threads by project"
+                  label={selectedProject?.title ?? gt("All projects")}
+                  accessibilityLabel={gt("Filter threads by project")}
                   active={selectedProject !== undefined}
                   actions={[
-                    { id: "all", title: "All projects", state: projectId === null ? "on" : "off" },
+                    {
+                      id: "all",
+                      title: gt("All projects"),
+                      state: projectId === null ? "on" : "off",
+                    },
                     ...picker.projectOptions.map((project) => ({
                       id: JSON.stringify(project.id),
                       title: project.title,
@@ -160,8 +168,10 @@ function SnoozeUntilSettledSheet(props: {
                 {SNOOZE_UNTIL_SETTLED_STATUS_FILTERS.map((filter) => (
                   <Chip
                     key={filter.value}
-                    label={filter.label}
-                    accessibilityLabel={`Show ${filter.label.toLowerCase()} threads`}
+                    label={messages(filter.label)}
+                    accessibilityLabel={gt("Show {status} threads", {
+                      status: messages(filter.label).toLowerCase(),
+                    })}
                     selected={status === filter.value}
                     onPress={() => setStatus(filter.value)}
                   />
@@ -181,7 +191,7 @@ function SnoozeUntilSettledSheet(props: {
                       size="small"
                       label={thread.title}
                       trailingIcon="xmark"
-                      accessibilityLabel={`Remove ${thread.title}`}
+                      accessibilityLabel={gt("Remove {title}", { title: thread.title })}
                       onPress={() => toggle(thread.id)}
                     />
                   ))}
@@ -191,14 +201,14 @@ function SnoozeUntilSettledSheet(props: {
                 {picker.emptyState === "no-candidates" ? (
                   <EmptyState
                     variant="plain"
-                    title="Nothing to wait on"
-                    detail="Every other thread here is already settled or archived."
+                    title={gt("Nothing to wait on")}
+                    detail={gt("Every other thread here is already settled or archived.")}
                   />
                 ) : picker.emptyState === "no-matches" ? (
                   <EmptyState
                     variant="plain"
-                    title="No matching threads"
-                    detail="Try another search or filter."
+                    title={gt("No matching threads")}
+                    detail={gt("Try another search or filter.")}
                   />
                 ) : (
                   // oxlint-disable-next-line t3code/require-registered-list-scroll -- A full-screen Modal with an inline header; there is no navigation header to register with.
@@ -237,8 +247,8 @@ function SnoozeUntilSettledSheet(props: {
                   fullWidth
                   label={
                     selectedCount === 0
-                      ? "Pick threads to wait on"
-                      : `Snooze ${snoozeUntilSettledPhrase(selectedCount)}`
+                      ? gt("Pick threads to wait on")
+                      : snoozeUntilSettledActionLabel(selectedCount, messages)
                   }
                   disabled={selectedCount === 0}
                   onPress={confirm}

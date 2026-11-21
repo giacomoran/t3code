@@ -244,6 +244,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
       : presentSnoozeUntilSettled(activeThreadShell, {
           now: snoozeClock,
           shells: snoozeUntilSettledShells,
+          resolve: messages,
         });
   const acknowledgeThreadWoke = useAcknowledgeThreadWoke();
   const acknowledgeActiveThreadWoke = () => {
@@ -682,9 +683,9 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
       <ThreadStatusLine
         icon={<AlarmClockIcon />}
         label={
-          activeThreadSnoozeUntilSettled?.waitingPhrase
-            ? snoozeUntilSettledStatusLabel(activeThreadSnoozeUntilSettled)
-            : snoozeWake && snoozeWake !== "now"
+          activeThreadSnoozeUntilSettled?.waitingCount != null
+            ? snoozeUntilSettledStatusLabel(activeThreadSnoozeUntilSettled, messages)
+            : snoozeWake
               ? gt("Snoozed, {remaining} left", { remaining: snoozeWake })
               : gt("Snoozed", { $context: "thread status" })
         }
@@ -712,7 +713,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
       icon={<AlarmClockIcon />}
       label={
         activeThreadSnoozeUntilSettled?.wokeLabel
-          ? `Woke from snooze: ${activeThreadSnoozeUntilSettled.wokeLabel.toLowerCase()}`
+          ? gt("Woke from snooze: threads settled")
           : gt("Woke from snooze")
       }
       actionLabel={gt("Dismiss")}

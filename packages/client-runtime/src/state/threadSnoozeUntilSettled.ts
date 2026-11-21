@@ -5,6 +5,8 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { foldSearchQuery, scoreThreadSearch } from "@t3tools/shared/paletteSearch";
+import { mFallback, msg } from "gt-i18n";
+import type { MFunctionType } from "gt-i18n/types";
 
 import type { EnvironmentThreadShell } from "./models.ts";
 import { threadSearchSubject, type ThreadSearchShell } from "./threadSearch.ts";
@@ -16,16 +18,37 @@ import {
 } from "./threadSettled.ts";
 import { toSortableTimestamp } from "./threadSort.ts";
 
-/** "until 1 thread settles", "until 3 threads settle": completes "Snoozed …" or "Snooze …". */
-export function snoozeUntilSettledPhrase(count: number): string {
-  return count === 1 ? "until 1 thread settles" : `until ${count} threads settle`;
+/** "Snoozed until 2 threads settle": a snooze waiting on `count` threads. */
+export function snoozedUntilSettledLabel(
+  count: number,
+  resolve: MFunctionType = mFallback,
+): string {
+  return resolve(
+    msg(
+      "Snoozed until {count, plural, one {{count} thread settles} other {{count} threads settle}}",
+      { count },
+    ),
+  );
+}
+
+/** "Snooze until 2 threads settle": the picker's confirm button. */
+export function snoozeUntilSettledActionLabel(
+  count: number,
+  resolve: MFunctionType = mFallback,
+): string {
+  return resolve(
+    msg(
+      "Snooze until {count, plural, one {{count} thread settles} other {{count} threads settle}}",
+      { count },
+    ),
+  );
 }
 
 export interface ThreadSnoozeUntilSettledPresentation {
   /** The threads the snooze waits on; empty for a time snooze. */
   readonly threadIds: ReadonlyArray<ThreadId>;
-  /** "until 2 threads settle" while the thread is snoozed waiting on them; shown instead of the wake time. */
-  readonly waitingPhrase: string | null;
+  /** How many threads the snooze still waits on while snoozed; shown instead of the wake time. */
+  readonly waitingCount: number | null;
   /** "Threads settled" when the thread woke because they all settled. */
   readonly wokeLabel: string | null;
 }
@@ -68,16 +91,13 @@ export function presentThreadSnoozeUntilSettled(
   options: {
     readonly now: string;
     readonly threadById: (threadId: ThreadId) => SnoozeDependencyShell | undefined;
+    readonly resolve?: MFunctionType;
   },
 ): ThreadSnoozeUntilSettledPresentation {
   const threadIds = shell.snoozeUntilSettledThreadIds ?? [];
-  if (threadIds.length === 0) return { threadIds, waitingPhrase: null, wokeLabel: null };
+  if (threadIds.length === 0) return { threadIds, waitingCount: null, wokeLabel: null };
   if (effectiveSnoozed(shell, options)) {
-    return {
-      threadIds,
-      waitingPhrase: snoozeUntilSettledPhrase(threadIds.length),
-      wokeLabel: null,
-    };
+    return { threadIds, waitingCount: threadIds.length, wokeLabel: null };
   }
 
   // Woke: only an expired snooze whose threads had all finished by then woke because of them.
@@ -87,7 +107,7 @@ export function presentThreadSnoozeUntilSettled(
     threadWokeAt(shell, options) === null ||
     threadRaisedHandWhileSnoozed(shell)
   ) {
-    return { threadIds, waitingPhrase: null, wokeLabel: null };
+    return { threadIds, waitingCount: null, wokeLabel: null };
   }
   const wakeAtMs = Date.parse(snoozedUntil);
   const wokeOnThreadsSettled = threadIds.every((threadId) =>
@@ -95,8 +115,12 @@ export function presentThreadSnoozeUntilSettled(
   );
   return {
     threadIds,
-    waitingPhrase: null,
-    wokeLabel: wokeOnThreadsSettled ? "Threads settled" : null,
+    waitingCount: null,
+    wokeLabel: wokeOnThreadsSettled
+      ? (options.resolve ?? mFallback)(
+          msg("Threads settled", { $context: "why a snoozed thread woke" }),
+        )
+      : null,
   };
 }
 
@@ -113,7 +137,13 @@ export function toggleSnoozeUntilSettledSelection(
 }
 
 /** Shown once the picks reach the limit. */
-export const SNOOZE_UNTIL_SETTLED_LIMIT_HINT = `A snooze can wait on up to ${THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS} threads.`;
+export function snoozeUntilSettledLimitHint(resolve: MFunctionType = mFallback): string {
+  return resolve(
+    msg("A snooze can wait on up to {max} threads.", {
+      max: THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS,
+    }),
+  );
+}
 
 /** The picker's status filter groups the row status the sidebar and thread list already show. */
 export type SnoozeCandidateStatus = "working" | "attention" | "idle";

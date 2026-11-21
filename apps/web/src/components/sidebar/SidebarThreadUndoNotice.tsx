@@ -20,6 +20,12 @@ const SHORT_SUMMARY = {
   Archived: msg("{count, plural, =1 {Archived,} other {Archived {count},}}"),
   Discarded: msg("{count, plural, =1 {Discarded,} other {Discarded {count},}}"),
 };
+const SNOOZED_UNTIL_SETTLED_ONE = msg(
+  "Snoozed until {waiting, plural, one {{waiting} thread settles} other {{waiting} threads settle}},",
+);
+const SNOOZED_UNTIL_SETTLED_MANY = msg(
+  "Snoozed {count} until {waiting, plural, one {{waiting} thread settles} other {{waiting} threads settle}},",
+);
 
 /** Fills the free space in the sidebar footer's utility row, so it never moves or covers the list. */
 export function SidebarThreadUndoNotice() {
@@ -27,11 +33,14 @@ export function SidebarThreadUndoNotice() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const m = useMessages();
   // Short enough to fit beside the utility icons; screen readers hear the full summary.
-  const actionSummary = notice ? m(SHORT_SUMMARY[notice.action], { count: notice.count }) : null;
-  const summary =
-    actionSummary !== null && notice?.detail !== undefined
-      ? `${actionSummary} ${notice.detail}`
-      : actionSummary;
+  const summary = !notice
+    ? null
+    : notice.untilSettledCount === undefined
+      ? m(SHORT_SUMMARY[notice.action], { count: notice.count })
+      : m(notice.count === 1 ? SNOOZED_UNTIL_SETTLED_ONE : SNOOZED_UNTIL_SETTLED_MANY, {
+          count: notice.count,
+          waiting: notice.untilSettledCount,
+        });
 
   // Keeps the last text on screen while it fades out, then unmounts on transitionend.
   const [shownSummary, setShownSummary] = useState(summary);

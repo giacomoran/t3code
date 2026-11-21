@@ -7,10 +7,7 @@ import {
 } from "@t3tools/client-runtime/environment";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { canSnooze, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
-import {
-  isSnoozeDependencyDone,
-  snoozeUntilSettledPhrase,
-} from "@t3tools/client-runtime/state/thread-snooze-until-settled";
+import { isSnoozeDependencyDone } from "@t3tools/client-runtime/state/thread-snooze-until-settled";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import {
   AuthOrchestrationOperateScope,
@@ -1006,7 +1003,7 @@ export function useThreadActions() {
       action: "Snoozed",
       ...(untilSettledThreadIds === undefined
         ? {}
-        : { detail: snoozeUntilSettledPhrase(untilSettledThreadIds.length) }),
+        : { untilSettledCount: untilSettledThreadIds.length }),
       claim: action,
       undo: () => runUndoPlan(target, ThreadUndo.planThreadUndo("snooze")),
       failureTitle: m(msg("Failed to wake thread")),

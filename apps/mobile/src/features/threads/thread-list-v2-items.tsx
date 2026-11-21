@@ -36,7 +36,7 @@ import {
 import { toServerClock } from "@t3tools/client-runtime/clock";
 import type { SnoozePresetSetting } from "@t3tools/contracts/settings";
 import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
-import { snoozeUntilSettledPhrase } from "@t3tools/client-runtime/state/thread-snooze-until-settled";
+import { snoozedUntilSettledLabel } from "@t3tools/client-runtime/state/thread-snooze-until-settled";
 import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import type { MenuAction } from "@react-native-menu/menu";
 import { useNavigation } from "@react-navigation/native";
@@ -910,12 +910,13 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const timeLabel = pendingSync ? gt("Waiting to sync") : props.timeLabel && m(props.timeLabel);
   const snoozeWakeLabelText =
     props.snoozeWakeLabelText === undefined ? undefined : m(props.snoozeWakeLabelText);
+  const wokeLabel = props.wokeLabel && m(props.wokeLabel);
   const rowAccessibilityLabel = threadListV2RowAccessibilityLabel(
     {
       title: thread.title,
       variant,
       woke: showsWoke,
-      wokeLabel: props.wokeLabel,
+      wokeLabel,
       // Working and waiting rows show only an icon and a duration, so name them for speech.
       statusLabel:
         statusLabel &&
@@ -928,7 +929,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         !snoozedRow || pendingSync
           ? undefined
           : props.snoozeWaitingThreadCount !== undefined
-            ? `Snoozed ${snoozeUntilSettledPhrase(props.snoozeWaitingThreadCount)}`
+            ? snoozedUntilSettledLabel(props.snoozeWaitingThreadCount, m)
             : snoozeWakeLabelText,
       providerNameLabel,
       hasQueuedMessages: props.hasQueuedMessages === true,
@@ -1469,7 +1470,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           {thread.notificationsMuted === true ? (
             <SymbolView
               name="bell.slash"
-              accessibilityLabel="Notifications muted"
+              accessibilityLabel={gt("Notifications muted")}
               size={12}
               tintColorClassName={rowAppearance.mutedIconTintClassName}
               type="monochrome"
@@ -1510,7 +1511,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
                     : "text-warning-foreground",
                 )}
               >
-                {props.wokeLabel ?? gt("Woke", { $context: "thread came back from snooze" })}
+                {wokeLabel ?? gt("Woke", { $context: "thread came back from snooze" })}
               </Text>
             </Pressable>
           ) : statusLabel ? (

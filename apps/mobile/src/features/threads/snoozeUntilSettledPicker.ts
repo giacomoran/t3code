@@ -16,24 +16,27 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 
+import { msg } from "gt-react-native";
+
+import { m, type MessageResolver } from "../../i18n/messages";
 import { relativeTime } from "../../lib/time";
 import { resolveThreadListV2RowStatus } from "./threadListV2";
 
 export const SNOOZE_UNTIL_SETTLED_STATUS_FILTERS = [
-  { value: "all", label: "All" },
-  { value: "working", label: "Working" },
-  { value: "attention", label: "Needs attention" },
-  { value: "idle", label: "Idle" },
+  { value: "all", label: msg("All", { $context: "thread status filter" }) },
+  { value: "working", label: msg("Working", { $context: "thread status" }) },
+  { value: "attention", label: msg("Needs attention") },
+  { value: "idle", label: msg("Idle", { $context: "thread status" }) },
 ] as const satisfies ReadonlyArray<{
   readonly value: SnoozeCandidateStatusFilter;
-  readonly label: string;
+  readonly label: ReturnType<typeof msg>;
 }>;
 
-const STATUS_LABEL: Record<SnoozeCandidateStatus, string> = {
-  working: "Working",
-  attention: "Needs attention",
-  idle: "Idle",
-};
+const STATUS_LABEL = {
+  working: msg("Working", { $context: "thread status" }),
+  attention: msg("Needs attention"),
+  idle: msg("Idle", { $context: "thread status" }),
+} satisfies Record<SnoozeCandidateStatus, ReturnType<typeof msg>>;
 
 export function snoozeUntilSettledCandidateStatus(
   thread: EnvironmentThreadShell,
@@ -69,7 +72,9 @@ export function resolveSnoozeUntilSettledPicker(input: {
   readonly projectId: ProjectId | null;
   readonly status: SnoozeCandidateStatusFilter;
   readonly nowMs: number;
+  readonly resolve?: MessageResolver;
 }): SnoozeUntilSettledPicker {
+  const resolve = input.resolve ?? m;
   const projectTitleById = new Map(
     input.projects
       .filter((project) => project.environmentId === input.environmentId)
@@ -117,8 +122,16 @@ export function resolveSnoozeUntilSettledPicker(input: {
     selected: selected.has(thread.id),
     subtitle: [
       projectTitleById.get(thread.projectId),
-      STATUS_LABEL[snoozeUntilSettledCandidateStatus(thread)],
-      `${relativeTime(resolveThreadActivityTimestamp(thread) ?? thread.createdAt, input.nowMs)} ago`,
+      resolve(STATUS_LABEL[snoozeUntilSettledCandidateStatus(thread)]),
+      resolve(
+        msg("{elapsed} ago", {
+          elapsed: relativeTime(
+            resolveThreadActivityTimestamp(thread) ?? thread.createdAt,
+            input.nowMs,
+            resolve,
+          ),
+        }),
+      ),
     ]
       .filter((part) => part !== undefined)
       .join(" · "),

@@ -2453,7 +2453,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         ? [
                             {
                               id: "snooze:until-settled",
-                              label: "Until threads settle…",
+                              label: gt("Until threads settle…"),
                               disabled: !canOperateThreads(selectedThreads),
                             },
                           ]
@@ -2546,8 +2546,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           toastManager.add(
             stackedThreadToast({
               type: "error",
-              title: "Failed to update thread notifications",
-              description: error instanceof Error ? error.message : "An error occurred.",
+              title: gt("Failed to update thread notifications"),
+              description: thrownErrorMessage(error, m) ?? gt("An error occurred."),
             }),
           );
           return;
@@ -2980,8 +2980,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               toastManager.add(
                 stackedThreadToast({
                   type: "error",
-                  title: "Failed to update thread notifications",
-                  description: error instanceof Error ? error.message : "An error occurred.",
+                  title: gt("Failed to update thread notifications"),
+                  description: thrownErrorMessage(error, m) ?? gt("An error occurred."),
                 }),
               );
             }

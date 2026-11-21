@@ -6,7 +6,7 @@ import { showThreadUndoNotice } from "./thread-undo-notice";
 import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
 import {
   isSnoozeDependencyDone,
-  snoozeUntilSettledPhrase,
+  snoozedUntilSettledLabel,
 } from "@t3tools/client-runtime/state/thread-snooze-until-settled";
 import { AuthOrchestrationOperateScope, type ThreadId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -296,13 +296,16 @@ export function useThreadListActions(): {
   const notificationMutingInFlightThreadKeys = useRef(new Set<string>());
 
   const setThreadNotificationsMuted = async (thread: EnvironmentThreadShell, muted: boolean) => {
-    const failureTitle = "Could not change thread notifications";
+    const failureTitle = m(msg("Could not change thread notifications"));
     if (!checkThreadOperationPermission(thread, failureTitle)) return false;
     if (
       appAtomRegistry.get(environmentServerConfigsAtom).get(thread.environmentId)?.environment
         .capabilities.threadNotificationMuting !== true
     ) {
-      Dialog.alert(failureTitle, "Update this environment's server to mute thread notifications.");
+      Dialog.alert(
+        failureTitle,
+        m(msg("Update this environment's server to mute thread notifications.")),
+      );
       return false;
     }
     const key = scopedThreadKey(thread.environmentId, thread.id);
@@ -315,7 +318,7 @@ export function useThreadListActions(): {
     }).finally(() => notificationMutingInFlightThreadKeys.current.delete(key));
     if (result._tag === "Failure") {
       const error = Cause.squash(result.cause);
-      Dialog.alert(failureTitle, error instanceof Error ? error.message : "Try again.");
+      Dialog.alert(failureTitle, error instanceof Error ? error.message : m(msg("Try again.")));
       return false;
     }
     return true;
@@ -453,8 +456,8 @@ export function useThreadListActions(): {
           .capabilities.threadSnoozeUntilSettled !== true
       ) {
         Dialog.alert(
-          "Could not snooze thread",
-          "Update this environment's server to snooze until threads settle.",
+          m(msg("Could not snooze thread")),
+          m(msg("Update this environment's server to snooze until threads settle.")),
         );
         return false;
       }
@@ -505,7 +508,7 @@ export function useThreadListActions(): {
         ThreadUndo.planThreadUndo("snooze"),
         untilSettledThreadIds === undefined
           ? undefined
-          : `Snoozed ${snoozeUntilSettledPhrase(untilSettledThreadIds.length)}`,
+          : snoozedUntilSettledLabel(untilSettledThreadIds.length, m),
       );
       return true;
     })();

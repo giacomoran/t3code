@@ -43,7 +43,7 @@ import type { ThreadMoveAvailability } from "./threadOrder";
 
 import { relativeTime } from "../../lib/time";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
-import { m, type MessageResolver } from "../../i18n/messages";
+import { keepMarked, m, type MessageResolver } from "../../i18n/messages";
 
 import {
   applyPendingThreadOrder,
@@ -812,6 +812,8 @@ export function buildThreadListV2Items(input: {
     const { wokeLabel } = presentThreadSnoozeUntilSettled(thread, {
       now,
       threadById: (threadId) => byKey.get(`${thread.environmentId}:${threadId}`),
+      // Layouts outlive a language switch, so rows resolve the label.
+      resolve: keepMarked,
     });
     return { wokeAt, wokeLabel };
   };
