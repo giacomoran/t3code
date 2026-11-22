@@ -77,6 +77,12 @@ describe("presentThreadSnoozeUntilSettled", () => {
       expected: { waitingCount: null, wokeLabel: null },
     },
     {
+      name: "gives a wake no reason while a linked thread has no shell here",
+      shell: shell({ snoozedUntil: NOW, threadIds: [first], linkedThreads: [onBox] }),
+      threadById: (threadId: ThreadId) => (threadId === first ? settled : undefined),
+      expected: { waitingCount: null, wokeLabel: null },
+    },
+    {
       name: "says why it woke once they all settled or went away",
       shell: shell({ snoozedUntil: NOW, threadIds: [first, second] }),
       threadById: (threadId: ThreadId) => (threadId === first ? settled : undefined),

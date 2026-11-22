@@ -178,9 +178,12 @@ export function presentThreadSnoozeUntilSettled(
     return { dependencies, waitingCount: null, wokeLabel: null };
   }
   const wakeAtMs = Date.parse(snoozedUntil);
-  const wokeOnThreadsSettled = dependencies.every((ref) =>
-    isSnoozeDependencyDoneBy(options.dependencyOf(ref), wakeAtMs),
-  );
+  const wokeOnThreadsSettled = dependencies.every((ref) => {
+    const dependency = options.dependencyOf(ref);
+    // A linked thread with no shell here may just not be loaded, so it cannot explain the wake.
+    if (dependency === undefined && ref.environmentId !== shell.environmentId) return false;
+    return isSnoozeDependencyDoneBy(dependency, wakeAtMs);
+  });
   return {
     dependencies,
     waitingCount: null,
