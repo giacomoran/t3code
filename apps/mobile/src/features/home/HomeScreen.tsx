@@ -16,11 +16,8 @@ import {
 } from "@t3tools/client-runtime/state/shell";
 import { pickableProjectGroups } from "@t3tools/client-runtime/state/project-grouping";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
-import {
-  type EnvironmentId,
-  type SidebarProjectGroupingMode,
-  type ThreadId,
-} from "@t3tools/contracts";
+import type { SnoozeUntilSettledLists } from "@t3tools/client-runtime/state/thread-snooze-until-settled";
+import { type EnvironmentId, type SidebarProjectGroupingMode } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import {
   use,
@@ -138,7 +135,7 @@ interface HomeScreenProps {
   readonly onSnoozeThread: (
     thread: EnvironmentThreadShell,
     snoozedUntil: string,
-    untilSettledThreadIds?: ReadonlyArray<ThreadId>,
+    untilSettled?: SnoozeUntilSettledLists,
   ) => Promise<boolean>;
   readonly onUnsnoozeThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
   readonly onUnsettleThread: (thread: EnvironmentThreadShell) => void;

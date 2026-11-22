@@ -19,7 +19,11 @@ import {
   threadSearchMatchKey,
   threadSearchSubject,
 } from "@t3tools/client-runtime/state/thread-search";
-import { presentThreadSnoozeUntilSettled } from "@t3tools/client-runtime/state/thread-snooze-until-settled";
+import {
+  presentThreadSnoozeUntilSettled,
+  snoozeDependencyLookup,
+  type SnoozeDependency,
+} from "@t3tools/client-runtime/state/thread-snooze-until-settled";
 import { foldSearchQuery, rankSearchItems, scoreThreadSearch } from "@t3tools/shared/paletteSearch";
 import {
   createInboxReturnTracker,
@@ -34,7 +38,12 @@ import {
   sortPinnedThreadsByOrderKey,
   sortSettledThreads,
 } from "@t3tools/client-runtime/state/thread-sort";
-import { isListedThreadLineage, type EnvironmentId, type ProjectId } from "@t3tools/contracts";
+import {
+  isListedThreadLineage,
+  type EnvironmentId,
+  type ProjectId,
+  type ScopedThreadRef,
+} from "@t3tools/contracts";
 import type { SnoozePresetSetting } from "@t3tools/contracts/settings";
 import type { MenuAction } from "@react-native-menu/menu";
 
@@ -635,7 +644,9 @@ export function buildThreadListV2ListItems(input: {
   const queuedThreadKeys = input.queuedThreadKeys?.size ? input.queuedThreadKeys : undefined;
   const threadItems = input.items.map((item): ThreadListV2ListItem => {
     // A snooze waiting on threads shows their count; its wake time is only the 30-day cap.
-    const waitingThreadCount = item.thread.snoozeUntilSettledThreadIds?.length ?? 0;
+    const waitingThreadCount =
+      (item.thread.snoozeUntilSettledThreadIds?.length ?? 0) +
+      (item.thread.snoozeUntilSettledLinkedThreads?.length ?? 0);
     const snoozeWaitingThreadCount =
       item.snoozed && waitingThreadCount > 0 ? waitingThreadCount : undefined;
     const snoozeWakeLabelText =
@@ -799,19 +810,24 @@ export function buildThreadListV2Items(input: {
   const query = foldSearchQuery(input.searchQuery);
   const nowMs = Date.parse(now);
   // Built on the first woke thread that waited on others, which most layouts never see.
-  let threadByKey: ReadonlyMap<string, EnvironmentThreadShell> | null = null;
+  let dependencyOf: ((ref: ScopedThreadRef) => SnoozeDependency) | null = null;
   const woke = (thread: EnvironmentThreadShell) => {
     const wokeAt = resolveThreadListV2WokeAt(thread, { now });
-    if (wokeAt === null || (thread.snoozeUntilSettledThreadIds?.length ?? 0) === 0) {
+    if (
+      wokeAt === null ||
+      ((thread.snoozeUntilSettledThreadIds?.length ?? 0) === 0 &&
+        (thread.snoozeUntilSettledLinkedThreads?.length ?? 0) === 0)
+    ) {
       return { wokeAt, wokeLabel: null };
     }
-    threadByKey ??= new Map(
-      input.threads.map((candidate) => [`${candidate.environmentId}:${candidate.id}`, candidate]),
+    // An environment with no threads listed here is one this device cannot see.
+    dependencyOf ??= snoozeDependencyLookup(
+      input.threads,
+      new Set(input.threads.map((candidate) => candidate.environmentId)),
     );
-    const byKey = threadByKey;
     const { wokeLabel } = presentThreadSnoozeUntilSettled(thread, {
       now,
-      threadById: (threadId) => byKey.get(`${thread.environmentId}:${threadId}`),
+      dependencyOf,
       // Layouts outlive a language switch, so rows resolve the label.
       resolve: keepMarked,
     });

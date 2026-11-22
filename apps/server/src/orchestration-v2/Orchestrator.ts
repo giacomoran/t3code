@@ -78,6 +78,7 @@ import {
   type ProviderSessionId,
   RunId,
   RuntimeMode,
+  type ScopedThreadRef,
   ThreadLinkedPullRequest,
   ThreadId,
   TurnItemId,
@@ -119,6 +120,7 @@ import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
+import * as SqlClient from "effect/sql/SqlClient";
 import * as Stream from "effect/Stream";
 
 import * as ProjectStore from "./ProjectStore.ts";
@@ -229,9 +231,10 @@ import {
 import { planThreadDeletion } from "./ThreadDeletion.ts";
 import {
   areSnoozeDependenciesDone,
+  isEnvironmentLinked,
   loadSnoozeDependency,
-  snoozeWaitingThreadIds,
-  validateSnoozeUntilSettledThreadIds,
+  snoozeWaitingDependencies,
+  validateSnoozeUntilSettledDependencies,
 } from "./snoozeUntilSettled.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ServerSettings from "../serverSettings.ts";
@@ -1697,6 +1700,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   const runtimePolicy = yield* RuntimePolicyV2;
   const threadForkService = yield* ThreadForkServiceV2;
   const threadDispatch = yield* ThreadCommandExecutor.ThreadCommandExecutor;
+  const sql = yield* SqlClient.SqlClient;
   const messageIntake = yield* KeyedLock.make<ThreadId>();
   // Read once: the policy is fixed for the server's life, and dispatch takes it as an input.
   const { managedPolicy } = serverSettings;
@@ -4976,6 +4980,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     }
     let snoozedUntil: DateTime.Utc | null = null;
     let snoozeUntilSettledThreadIds: ReadonlyArray<ThreadId> | null = null;
+    let snoozeUntilSettledLinkedThreads: ReadonlyArray<ScopedThreadRef> | null = null;
     const loadDependency = (threadId: ThreadId) =>
       loadSnoozeDependency(projectionStore, threadId).pipe(mapDispatchError(command));
     if (command.type === "thread.snooze") {
@@ -5042,13 +5047,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         });
       }
       snoozedUntil = parsedSnoozedUntil.value;
-      if (command.untilSettledThreadIds !== undefined) {
-        const validation = yield* validateSnoozeUntilSettledThreadIds({
+      if (
+        command.untilSettledThreadIds !== undefined ||
+        command.untilSettledLinkedThreads !== undefined
+      ) {
+        const validation = yield* validateSnoozeUntilSettledDependencies({
           threadId: command.threadId,
-          threadIds: command.untilSettledThreadIds,
+          threadIds: command.untilSettledThreadIds ?? [],
+          linkedThreads: command.untilSettledLinkedThreads ?? [],
           snoozedUntilMs: DateTime.toEpochMillis(parsedSnoozedUntil.value),
           nowMs: DateTime.toEpochMillis(now),
           loadThread: loadDependency,
+          isEnvironmentLinked: (environmentId) =>
+            isEnvironmentLinked(sql, environmentId).pipe(mapDispatchError(command)),
         });
         if (validation.type === "invalid") {
           return yield* new OrchestratorDispatchError({
@@ -5057,15 +5068,31 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             cause: validation.cause,
           });
         }
-        snoozeUntilSettledThreadIds = validation.threadIds;
+        snoozeUntilSettledThreadIds = validation.threadIds.length > 0 ? validation.threadIds : null;
+        snoozeUntilSettledLinkedThreads =
+          validation.linkedThreads.length > 0 ? validation.linkedThreads : null;
       }
     }
     // Re-check when deciding: an ended or replaced snooze, or a reopened thread, keeps it as is.
+    // Linked threads are left to the worker, which read them through the link before sending this.
     if (command.type === "thread.unsnooze" && command.reason === "threads_settled") {
-      const waitingThreadIds = snoozeWaitingThreadIds(thread, DateTime.toEpochMillis(now));
+      if (command.snoozedAt === undefined) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: `A threads_settled wake of thread ${command.threadId} must name the snooze it checked.`,
+        });
+      }
+      const waiting = snoozeWaitingDependencies(thread, DateTime.toEpochMillis(now));
+      const checkedSnoozedAt = DateTime.make(command.snoozedAt);
+      const isCheckedSnooze =
+        Option.isSome(checkedSnoozedAt) &&
+        thread.snoozedAt != null &&
+        DateTime.toEpochMillis(thread.snoozedAt) === DateTime.toEpochMillis(checkedSnoozedAt.value);
       if (
-        waitingThreadIds === null ||
-        !(yield* areSnoozeDependenciesDone(waitingThreadIds, loadDependency))
+        waiting === null ||
+        !isCheckedSnooze ||
+        !(yield* areSnoozeDependenciesDone(waiting.threadIds, loadDependency))
       ) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
@@ -5126,6 +5153,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             snoozedUntil: null,
             snoozedAt: null,
             snoozeUntilSettledThreadIds: null,
+            snoozeUntilSettledLinkedThreads: null,
             updatedAt:
               alreadySettled && thread.snoozedUntil == null && thread.snoozedAt == null
                 ? thread.updatedAt
@@ -5152,6 +5180,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             ...thread,
             snoozedUntil,
             snoozeUntilSettledThreadIds,
+            snoozeUntilSettledLinkedThreads,
             limitRecovery: thread.limitRecovery ? { ...thread.limitRecovery, snooze: false } : null,
             snoozedAt: now,
             updatedAt: now,
@@ -5168,6 +5197,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             snoozedUntil: null,
             snoozedAt: null,
             snoozeUntilSettledThreadIds: null,
+            snoozeUntilSettledLinkedThreads: null,
             lastSnoozeWakeAt: alreadyAwake ? thread.lastSnoozeWakeAt : now,
             updatedAt: alreadyAwake ? thread.updatedAt : now,
           };
@@ -5196,6 +5226,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             snoozedUntil: null,
             snoozedAt: null,
             snoozeUntilSettledThreadIds: null,
+            snoozeUntilSettledLinkedThreads: null,
             lastSnoozeWakeAt: thread.snoozedUntil == null ? thread.lastSnoozeWakeAt : now,
             updatedAt: alreadyPinned && !promotes ? thread.updatedAt : now,
           };
@@ -5248,6 +5279,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                   snoozedUntil: null,
                   snoozedAt: null,
                   snoozeUntilSettledThreadIds: null,
+                  snoozeUntilSettledLinkedThreads: null,
                   lastSnoozeWakeAt: thread.snoozedUntil,
                 }
               : {}),
@@ -5286,6 +5318,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                   // Recovery updates acknowledge the same stopped run; their timestamps must not trigger fresh failure wakes.
                   snoozedAt: now,
                   snoozeUntilSettledThreadIds: null,
+                  snoozeUntilSettledLinkedThreads: null,
                 }
               : command.limitRecovery !== undefined &&
                   thread.limitRecovery?.snooze &&
@@ -5296,6 +5329,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                     snoozedUntil: null,
                     snoozedAt: null,
                     snoozeUntilSettledThreadIds: null,
+                    snoozeUntilSettledLinkedThreads: null,
                     lastSnoozeWakeAt: now,
                   }
                 : {}),
@@ -7619,6 +7653,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         snoozedUntil: null,
         snoozedAt: null,
         snoozeUntilSettledThreadIds: null,
+        snoozeUntilSettledLinkedThreads: null,
         updatedAt: now,
       };
       const event = yield* emit(
@@ -11339,6 +11374,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             snoozedUntil: null,
             snoozedAt: null,
             snoozeUntilSettledThreadIds: null,
+            snoozeUntilSettledLinkedThreads: null,
             updatedAt: now,
           },
         });
@@ -11572,6 +11608,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             snoozedUntil: null,
             snoozedAt: null,
             snoozeUntilSettledThreadIds: null,
+            snoozeUntilSettledLinkedThreads: null,
             updatedAt: now,
           },
         });
@@ -12076,6 +12113,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               snoozedUntil: null,
               snoozedAt: null,
               snoozeUntilSettledThreadIds: null,
+              snoozeUntilSettledLinkedThreads: null,
               updatedAt: now,
             },
           });
@@ -17800,6 +17838,7 @@ export const layer: Layer.Layer<
   | RuntimePolicyV2
   | ServerSettings.ServerSettingsService
   | TaskFolderStore.TaskFolderStore
+  | SqlClient.SqlClient
   | ThreadForkServiceV2
 > = Layer.effect(OrchestratorV2, makeOrchestrator()).pipe(
   // Layers memoize by reference, so this is the tracker ThreadLaunchService holds workspaces in.

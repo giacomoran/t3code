@@ -445,6 +445,10 @@ describe("title regeneration", () => {
 
 describe("remote thread lifecycle commands", () => {
   const DEPENDENCY_ID = ThreadId.make("thread-dependency");
+  const LINKED_DEPENDENCY = {
+    environmentId: EnvironmentId.make("environment-box"),
+    threadId: ThreadId.make("thread-on-box"),
+  };
   const actions = [
     [
       "settle",
@@ -454,23 +458,42 @@ describe("remote thread lifecycle commands", () => {
         pinnedAt: null,
         snoozedUntil: null,
         snoozeUntilSettledThreadIds: null,
+        snoozeUntilSettledLinkedThreads: null,
       },
     ],
     ["unsettle", { reason: "user" }, { settledOverride: "active", settledAt: null }],
     [
       "snooze",
-      { snoozedUntil: "2099-01-01T00:00:00.000Z", untilSettledThreadIds: [DEPENDENCY_ID] },
-      { snoozedUntil: FUTURE, snoozeUntilSettledThreadIds: [DEPENDENCY_ID] },
+      {
+        snoozedUntil: "2099-01-01T00:00:00.000Z",
+        untilSettledThreadIds: [DEPENDENCY_ID],
+        untilSettledLinkedThreads: [LINKED_DEPENDENCY],
+      },
+      {
+        snoozedUntil: FUTURE,
+        snoozeUntilSettledThreadIds: [DEPENDENCY_ID],
+        snoozeUntilSettledLinkedThreads: [LINKED_DEPENDENCY],
+      },
     ],
     [
       "unsnooze",
       { reason: "user" },
-      { snoozedUntil: null, snoozedAt: null, snoozeUntilSettledThreadIds: null },
+      {
+        snoozedUntil: null,
+        snoozedAt: null,
+        snoozeUntilSettledThreadIds: null,
+        snoozeUntilSettledLinkedThreads: null,
+      },
     ],
     [
       "pin",
       { orderKey: "a" },
-      { pinnedAt: expect.any(Object), pinOrderKey: "a", snoozeUntilSettledThreadIds: null },
+      {
+        pinnedAt: expect.any(Object),
+        pinOrderKey: "a",
+        snoozeUntilSettledThreadIds: null,
+        snoozeUntilSettledLinkedThreads: null,
+      },
     ],
     ["unpin", {}, { pinnedAt: null, pinOrderKey: null }],
     ["setAutoSettle", { enabled: false }, { autoSettleDisabledAt: expect.any(Object) }],
@@ -497,6 +520,7 @@ describe("remote thread lifecycle commands", () => {
                     snoozedUntil: FUTURE,
                     snoozedAt: NOW,
                     snoozeUntilSettledThreadIds: [DEPENDENCY_ID],
+                    snoozeUntilSettledLinkedThreads: [LINKED_DEPENDENCY],
                   }
                 : {}),
               ...(action === "unpin" || action === "settle"

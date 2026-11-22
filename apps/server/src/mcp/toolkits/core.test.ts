@@ -9,6 +9,7 @@ import {
   CommandId,
   EnvironmentId,
   NodeId,
+  OrchestratorMcpFailure,
   OrchestratorMcpThreadReadResult,
   ProjectId,
   ProviderDriverKind,
@@ -665,6 +666,92 @@ it.effect("snoozes until threads settle with the default cap when no time is giv
   }).pipe(
     Effect.provide(
       layerThreadToolkit.pipe(
+        Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
+        Layer.provide(NodeCrypto.layer),
+        Layer.provide(
+          Layer.mock(ThreadManagement.ThreadManagementService)({
+            getThreadShell: (id) => Effect.succeed(McpToolAccessTestkit.liveThreadShell(id)),
+            getProjectThreadRecords: ({ threadId: id }) =>
+              Effect.succeed(
+                McpToolAccessTestkit.idleThreadProjection(McpToolAccessTestkit.liveThreadShell(id)),
+              ),
+            dispatch: (command) => {
+              dispatched.push(command);
+              return Effect.succeed({ sequence: 1 } as never);
+            },
+          }),
+        ),
+      ),
+    ),
+  );
+});
+
+const linkedRef = {
+  environmentId: EnvironmentId.make("environment:box"),
+  threadId: ThreadId.make("thread:box"),
+};
+it.effect.each([
+  { name: "reads each linked thread, then snoozes", ref: linkedRef, answer: "open", error: null },
+  {
+    name: "rejects a linked thread that does not exist",
+    ref: linkedRef,
+    answer: new OrchestratorMcpFailure({ code: "thread_not_found", message: "Thread not found." }),
+    error: "Thread thread:box does not exist in environment environment:box.",
+  },
+  {
+    name: "rejects a linked environment that does not answer",
+    ref: linkedRef,
+    answer: new OrchestratorMcpFailure({ code: "orchestration_error", message: "It timed out." }),
+    error: "Environment environment:box is not answering",
+  },
+  {
+    name: "rejects linked threads that are all done",
+    ref: linkedRef,
+    answer: "settled",
+    error: "Every listed thread is already settled, archived, or deleted.",
+  },
+  {
+    name: "rejects a thread here passed as linked",
+    ref: { ...linkedRef, environmentId: scope.environmentId },
+    answer: "open",
+    error: "is in this environment: pass it in untilSettledThreadIds.",
+  },
+] as const)("organize $name", ({ ref, answer, error }) => {
+  const dispatched: Array<unknown> = [];
+  const read = (outcome: "open" | "settled") =>
+    ({ thread: { settled: outcome === "settled", archived: false } }) as never;
+  return Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const result = yield* server
+      .callTool({
+        name: "t3_thread_organize",
+        arguments: { action: "snooze", untilSettledLinkedThreads: [ref] },
+      })
+      .pipe(
+        Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+        Effect.provideService(McpSchema.McpServerClient, client),
+      );
+    if (error !== null) {
+      expect(declaredFailure(result)?.message).toContain(error);
+      expect(dispatched).toEqual([]);
+      return;
+    }
+    expect(result.isError).not.toBe(true);
+    expect(dispatched).toMatchObject([
+      { type: "thread.snooze", threadId, untilSettledLinkedThreads: [ref] },
+    ]);
+  }).pipe(
+    Effect.provide(
+      McpHttpServer.layerThreadToolkit.pipe(
+        Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
+        Layer.provide(Layer.mock(ScheduledTaskService.ScheduledTaskService)({})),
+        Layer.provide(
+          Layer.mock(PeerForwarding.PeerForwarding)({
+            readThread: () => (typeof answer === "string" ? Effect.succeed(read(answer)) : answer),
+          }),
+        ),
+        Layer.provide(Layer.mock(PeerLinkRequests.PeerLinkRequests)({})),
+        Layer.provide(Layer.mock(PeerLinks.PeerLinks)({})),
         Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
         Layer.provide(NodeCrypto.layer),
         Layer.provide(

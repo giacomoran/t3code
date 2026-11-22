@@ -6,10 +6,12 @@ import {
   toggleSnoozeUntilSettledSelection,
   type SnoozeCandidateStatusFilter,
 } from "@t3tools/client-runtime/state/thread-snooze-until-settled";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import {
   THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS,
-  type ProjectId,
-  type ThreadId,
+  type EnvironmentId,
+  type ScopedProjectRef,
+  type ScopedThreadRef,
 } from "@t3tools/contracts";
 import * as Haptics from "expo-haptics";
 import { useGT, useMessages } from "gt-react-native";
@@ -25,6 +27,8 @@ import { SearchField } from "../../components/ui/SearchField";
 import { SelectionRow } from "../../components/ui/SelectionRow";
 import { SheetHeader } from "../../components/ui/SheetHeader";
 import { useNavigationThreadShells, useProjects } from "../../state/entities";
+import { useEnvironments } from "../../state/environments";
+import { useLinkedEnvironments } from "../../state/peerLinks";
 import { connectedEnvironmentIdsAtom } from "../../state/presentation";
 import { useThreadSearch } from "../../state/queries";
 import { ListFilterMenu } from "../layout/workspace/ListFilterMenu";
@@ -45,62 +49,99 @@ export function SnoozeUntilSettledHost() {
     <SnoozeUntilSettledSheet
       key={request.id}
       request={request}
-      onFinish={(threadIds) => finishSnoozeUntilSettledRequest(request.id, threadIds)}
+      onFinish={(picks) => finishSnoozeUntilSettledRequest(request.id, picks)}
     />
   );
 }
 
+function refOf(thread: EnvironmentThreadShell): ScopedThreadRef {
+  return { environmentId: thread.environmentId, threadId: thread.id };
+}
+
 function SnoozeUntilSettledSheet(props: {
   readonly request: SnoozeUntilSettledRequest;
-  readonly onFinish: (threadIds: ReadonlyArray<ThreadId> | null) => void;
+  readonly onFinish: (picks: ReadonlyArray<ScopedThreadRef> | null) => void;
 }) {
   const { environmentId, excludeThreadIds } = props.request;
   const gt = useGT();
   const messages = useMessages();
   const threads = useNavigationThreadShells();
   const projects = useProjects();
-  const connected = useAtomValue(connectedEnvironmentIdsAtom).includes(environmentId);
+  const connectedEnvironmentIds = useAtomValue(connectedEnvironmentIdsAtom);
   const searchInputRef = useRef<TextInputInstance>(null);
   const [nowMs] = useState(() => Date.now());
   const [query, setQuery] = useState("");
-  const [projectId, setProjectId] = useState<ProjectId | null>(null);
+  const [environmentFilter, setEnvironmentFilter] = useState<EnvironmentId | null>(null);
+  const [project, setProject] = useState<ScopedProjectRef | null>(null);
   const [status, setStatus] = useState<SnoozeCandidateStatusFilter>("all");
-  const [selectedThreadIds, setSelectedThreadIds] = useState<ReadonlyArray<ThreadId>>([]);
+  const [selected, setSelected] = useState<ReadonlyArray<ScopedThreadRef>>([]);
 
-  // Message hits come from the server's thread search, as in the thread list.
-  const threadSearch = useThreadSearch(
-    connected ? [environmentId] : [],
-    query,
-    projectId === null ? {} : { projectIds: [projectId] },
+  // Threads of machines the snoozed thread's server links to can be picked too, when that
+  // server can wait on them and this device is connected to them.
+  const { environments } = useEnvironments();
+  const supportsLinked =
+    environments.find((environment) => environment.environmentId === environmentId)?.serverConfig
+      ?.environment.capabilities.threadSnoozeUntilSettledLinked === true;
+  const linkedEnvironments = useLinkedEnvironments(supportsLinked ? environmentId : null);
+  const environmentIds = [
+    environmentId,
+    ...connectedEnvironmentIds.filter(
+      (candidate) => candidate !== environmentId && linkedEnvironments.has(candidate),
+    ),
+  ];
+  const environmentLabelById = new Map(
+    environments.map((environment) => [environment.environmentId, environment.label] as const),
   );
-  const messageMatchThreadIds = new Set(
-    threadSearch.matches
-      .filter((match) => match.environmentId === environmentId)
-      .map((match) => match.threadId),
+
+  // Message hits come from the servers' thread search, as in the thread list.
+  const searchEnvironmentIds = (
+    project !== null
+      ? [project.environmentId]
+      : environmentFilter !== null
+        ? [environmentFilter]
+        : environmentIds
+  ).filter((candidate) => connectedEnvironmentIds.includes(candidate));
+  const threadSearch = useThreadSearch(
+    searchEnvironmentIds,
+    query,
+    project === null ? {} : { projectIds: [project.projectId] },
+  );
+  const messageMatchThreadKeys = new Set(
+    threadSearch.matches.map((match) => `${match.environmentId}:${match.threadId}`),
   );
   const picker = resolveSnoozeUntilSettledPicker({
     threads,
     projects,
     environmentId,
+    environmentIds,
+    environmentLabelById,
     excludeThreadIds,
-    selectedThreadIds,
+    selected,
     query,
-    messageMatchThreadIds,
-    projectId,
+    messageMatchThreadKeys,
+    environmentFilter,
+    project,
     status,
     nowMs,
     resolve: messages,
   });
   const selectedCount = picker.selectedThreads.length;
-  const selectedProject = picker.projectOptions.find((project) => project.id === projectId);
+  const projectKey = (ref: ScopedProjectRef) => JSON.stringify([ref.environmentId, ref.projectId]);
+  const selectedProject =
+    project === null
+      ? undefined
+      : picker.projectOptions.find((option) => projectKey(option.project) === projectKey(project));
+  const selectedEnvironment = picker.environmentOptions.find(
+    (option) => option.environmentId === environmentFilter,
+  );
 
-  const toggle = (threadId: ThreadId) => {
+  const toggle = (ref: ScopedThreadRef) => {
     void Haptics.selectionAsync();
-    setSelectedThreadIds((current) => toggleSnoozeUntilSettledSelection(current, threadId));
+    setSelected((current) => toggleSnoozeUntilSettledSelection(current, ref));
   };
   const confirm = () => {
     if (selectedCount === 0) return;
-    props.onFinish(picker.selectedThreads.map((thread) => thread.id));
+    props.onFinish(picker.selectedThreads.map(refOf));
   };
   const cancel = () => props.onFinish(null);
 
@@ -115,7 +156,7 @@ function SnoozeUntilSettledSheet(props: {
                 presentation="inline"
                 title={gt("Snooze until threads settle")}
                 subtitle={
-                  selectedThreadIds.length >= THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS
+                  selected.length >= THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS
                     ? snoozeUntilSettledLimitHint(messages)
                     : selectedCount === 0
                       ? gt("Wakes when every picked thread settles")
@@ -142,6 +183,35 @@ function SnoozeUntilSettledSheet(props: {
                 className="grow-0"
                 contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 6, gap: 8 }}
               >
+                {picker.environmentOptions.length > 0 ? (
+                  <ListFilterMenu
+                    label={selectedEnvironment?.label ?? gt("All machines")}
+                    accessibilityLabel={gt("Filter threads by machine")}
+                    active={selectedEnvironment !== undefined}
+                    actions={[
+                      {
+                        id: "all",
+                        title: gt("All machines"),
+                        state: environmentFilter === null ? "on" : "off",
+                      },
+                      ...picker.environmentOptions.map((option) => ({
+                        id: JSON.stringify(option.environmentId),
+                        title: option.label,
+                        state:
+                          option.environmentId === environmentFilter
+                            ? ("on" as const)
+                            : ("off" as const),
+                      })),
+                    ]}
+                    onSelect={(id) => {
+                      const option = picker.environmentOptions.find(
+                        (candidate) => JSON.stringify(candidate.environmentId) === id,
+                      );
+                      setEnvironmentFilter(option === undefined ? null : option.environmentId);
+                      setProject(null);
+                    }}
+                  />
+                ) : null}
                 <ListFilterMenu
                   label={selectedProject?.title ?? gt("All projects")}
                   accessibilityLabel={gt("Filter threads by project")}
@@ -150,19 +220,19 @@ function SnoozeUntilSettledSheet(props: {
                     {
                       id: "all",
                       title: gt("All projects"),
-                      state: projectId === null ? "on" : "off",
+                      state: project === null ? "on" : "off",
                     },
-                    ...picker.projectOptions.map((project) => ({
-                      id: JSON.stringify(project.id),
-                      title: project.title,
-                      state: project.id === projectId ? ("on" as const) : ("off" as const),
+                    ...picker.projectOptions.map((option) => ({
+                      id: projectKey(option.project),
+                      title: option.title,
+                      state: option === selectedProject ? ("on" as const) : ("off" as const),
                     })),
                   ]}
                   onSelect={(id) => {
-                    const project = picker.projectOptions.find(
-                      (option) => JSON.stringify(option.id) === id,
+                    const option = picker.projectOptions.find(
+                      (candidate) => projectKey(candidate.project) === id,
                     );
-                    setProjectId(project === undefined ? null : project.id);
+                    setProject(option === undefined ? null : option.project);
                   }}
                 />
                 {SNOOZE_UNTIL_SETTLED_STATUS_FILTERS.map((filter) => (
@@ -187,12 +257,12 @@ function SnoozeUntilSettledSheet(props: {
                 >
                   {picker.selectedThreads.map((thread) => (
                     <Chip
-                      key={thread.id}
+                      key={`${thread.environmentId}:${thread.id}`}
                       size="small"
                       label={thread.title}
                       trailingIcon="xmark"
                       accessibilityLabel={gt("Remove {title}", { title: thread.title })}
-                      onPress={() => toggle(thread.id)}
+                      onPress={() => toggle(refOf(thread))}
                     />
                   ))}
                 </ScrollView>
@@ -202,7 +272,11 @@ function SnoozeUntilSettledSheet(props: {
                   <EmptyState
                     variant="plain"
                     title={gt("Nothing to wait on")}
-                    detail={gt("Every other thread here is already settled or archived.")}
+                    detail={
+                      picker.environmentOptions.length > 0
+                        ? gt("Every other thread is already settled or archived.")
+                        : gt("Every other thread here is already settled or archived.")
+                    }
                   />
                 ) : picker.emptyState === "no-matches" ? (
                   <EmptyState
@@ -214,8 +288,8 @@ function SnoozeUntilSettledSheet(props: {
                   // oxlint-disable-next-line t3code/require-registered-list-scroll -- A full-screen Modal with an inline header; there is no navigation header to register with.
                   <LegendList
                     data={picker.rows}
-                    keyExtractor={(row) => row.thread.id}
-                    extraData={selectedThreadIds}
+                    keyExtractor={(row) => `${row.thread.environmentId}:${row.thread.id}`}
+                    extraData={selected}
                     estimatedItemSize={64}
                     recycleItems
                     className="flex-1"
@@ -235,7 +309,7 @@ function SnoozeUntilSettledSheet(props: {
                         selected={item.selected}
                         isFirst={index === 0}
                         isLast={index === picker.rows.length - 1}
-                        onPress={() => toggle(item.thread.id)}
+                        onPress={() => toggle(refOf(item.thread))}
                       />
                     )}
                   />

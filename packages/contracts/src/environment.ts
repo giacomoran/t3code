@@ -144,6 +144,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   threadTitleRegeneration: Schema.optionalKey(Schema.Boolean),
   threadNotificationMuting: Schema.optionalKey(Schema.Boolean),
   threadSnoozeUntilSettled: Schema.optionalKey(Schema.Boolean),
+  /** Accepts `untilSettledLinkedThreads`: a snooze that waits on threads in linked environments. */
+  threadSnoozeUntilSettledLinked: Schema.optionalKey(Schema.Boolean),
   threadVisitedTracking: Schema.optionalKey(Schema.Boolean),
   threadPullRequestLinking: Schema.optionalKey(Schema.Boolean),
   serverResolvedCommandContext: Schema.optionalKey(Schema.Boolean),

@@ -7,6 +7,7 @@ import {
   OrchestratorMcpFailure,
   type OrchestrationV2Command,
   THREAD_SNOOZE_UNTIL_SETTLED_CAP_MS,
+  type ScopedThreadRef,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -24,6 +25,7 @@ import {
 } from "../../threadAccess.ts";
 import { providerOptionDescriptors, refuseAgentModePick } from "../../delegatedTaskModes.ts";
 import * as ProviderRegistry from "../../../provider/ProviderRegistry.ts";
+import * as PeerForwarding from "../../../peer/PeerForwarding.ts";
 import type * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as ThreadMessageIntake from "../../../orchestration-v2/ThreadMessageIntake.ts";
 import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
@@ -71,6 +73,91 @@ const topOfPinnedRunKey = Effect.fn("mcp.topOfPinnedRunKey")(function* (
   const pinnedKeys = index.flatMap((entry) => (entry.pinnedAt == null ? [] : [entry.pinOrderKey]));
   return topOfPinnedRunOrderKey(pinnedKeys) ?? undefined;
 });
+
+/**
+ * Reads each linked thread a snooze would wait on once, so a wrong id or an unreachable machine
+ * fails the call instead of waking the thread later. The orchestrator cannot read them, so the
+ * check that some listed thread is still open, linked ones included, happens here.
+ */
+const assertLinkedSnoozeDependenciesOpen = Effect.fn("mcp.assertLinkedSnoozeDependenciesOpen")(
+  function* (
+    threads: Pick<ThreadManagement.ThreadManagementService["Service"], "getThreadShell">,
+    threadIds: ReadonlyArray<ThreadId>,
+    linkedThreads: ReadonlyArray<ScopedThreadRef>,
+  ) {
+    const scope = yield* McpInvocationContext.McpInvocationContext;
+    const forwarding = yield* PeerForwarding.PeerForwarding;
+    const linkedDone = yield* Effect.forEach(
+      linkedThreads,
+      (ref) =>
+        Effect.gen(function* () {
+          if (ref.environmentId === scope.environmentId) {
+            return yield* new OrchestratorMcpFailure({
+              code: "invalid_request",
+              message: `Thread ${ref.threadId} is in this environment: pass it in untilSettledThreadIds.`,
+            });
+          }
+          // A peer that stalls mid-call counts as not answering, so the agent's call returns.
+          const read = yield* forwarding
+            .readThread(scope, ref.environmentId, { threadId: ref.threadId, limit: 1, runLimit: 1 })
+            .pipe(
+              Effect.timeoutOrElse({
+                duration: LINKED_SNOOZE_READ_TIMEOUT,
+                orElse: () => Effect.fail(linkedSnoozeReadTimedOut),
+              }),
+              Effect.mapError((error) => linkedSnoozeDependencyFailure(ref, error)),
+            );
+          return read.thread.settled || read.thread.archived;
+        }),
+      { concurrency: 4 },
+    );
+    if (!linkedDone.every(Boolean)) return;
+
+    // Every linked thread is done, so the snooze waits only if a thread here is still open.
+    const shells = yield* Effect.forEach(threadIds, (threadId) =>
+      threads.getThreadShell(threadId).pipe(Effect.mapError(unavailable)),
+    );
+    const localOpen = shells.some(
+      (shell) =>
+        shell !== null &&
+        shell.deletedAt === null &&
+        shell.archivedAt === null &&
+        shell.settledOverride !== "settled",
+    );
+    if (localOpen) return;
+    return yield* new OrchestratorMcpFailure({
+      code: "invalid_request",
+      message: "Every listed thread is already settled, archived, or deleted.",
+    });
+  },
+);
+
+/** Names the linked thread a read failed for: the peer's own message names neither. */
+/** One read of a linked thread while validating a snooze; the worker uses the same bound. */
+const LINKED_SNOOZE_READ_TIMEOUT = "30 seconds";
+const linkedSnoozeReadTimedOut = new OrchestratorMcpFailure({
+  code: "orchestration_error",
+  message: "The linked environment did not answer within 30 seconds.",
+});
+
+const linkedSnoozeDependencyFailure = (ref: ScopedThreadRef, error: OrchestratorMcpFailure) => {
+  if (error.code === "thread_not_found") {
+    return new OrchestratorMcpFailure({
+      code: "thread_not_found",
+      message: `Thread ${ref.threadId} does not exist in environment ${ref.environmentId}.`,
+    });
+  }
+  if (error.code === "orchestration_error") {
+    return new OrchestratorMcpFailure({
+      code: "orchestration_error",
+      message: `Environment ${ref.environmentId} is not answering, so thread ${ref.threadId} there cannot be checked: ${error.message}`,
+    });
+  }
+  return new OrchestratorMcpFailure({
+    code: error.code,
+    message: `Thread ${ref.threadId} in environment ${ref.environmentId} cannot be read: ${error.message}`,
+  });
+};
 
 const readQuestion = Effect.fn("mcp.readQuestion")(function* (input: {
   threadId?: ThreadId | undefined;
@@ -427,10 +514,16 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
       switch (input.action) {
         case "snooze": {
           const untilSettledThreadIds = input.untilSettledThreadIds;
-          if (input.snoozedUntil === undefined && untilSettledThreadIds === undefined) {
+          const untilSettledLinkedThreads = input.untilSettledLinkedThreads;
+          if (
+            input.snoozedUntil === undefined &&
+            untilSettledThreadIds === undefined &&
+            untilSettledLinkedThreads === undefined
+          ) {
             return yield* new OrchestratorMcpFailure({
               code: "invalid_request",
-              message: "snooze requires snoozedUntil or untilSettledThreadIds.",
+              message:
+                "snooze requires snoozedUntil, untilSettledThreadIds, or untilSettledLinkedThreads.",
             });
           }
           if (untilSettledThreadIds !== undefined && untilSettledThreadIds.length === 0) {
@@ -438,6 +531,19 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
               code: "invalid_request",
               message: "untilSettledThreadIds needs at least one thread.",
             });
+          }
+          if (untilSettledLinkedThreads !== undefined && untilSettledLinkedThreads.length === 0) {
+            return yield* new OrchestratorMcpFailure({
+              code: "invalid_request",
+              message: "untilSettledLinkedThreads needs at least one thread.",
+            });
+          }
+          if (untilSettledLinkedThreads !== undefined) {
+            yield* assertLinkedSnoozeDependenciesOpen(
+              threads,
+              untilSettledThreadIds ?? [],
+              untilSettledLinkedThreads,
+            );
           }
           // Waiting on threads caps the snooze, so a missing time means the default cap.
           const snoozedUntil =
@@ -452,6 +558,7 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
             type: "thread.snooze",
             snoozedUntil,
             ...(untilSettledThreadIds === undefined ? {} : { untilSettledThreadIds }),
+            ...(untilSettledLinkedThreads === undefined ? {} : { untilSettledLinkedThreads }),
           };
           break;
         }

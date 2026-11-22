@@ -1,4 +1,4 @@
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { msg } from "gt-react";
 import {
@@ -7,6 +7,7 @@ import {
   snoozeWakeLabel,
   type SnoozePreset,
 } from "@t3tools/client-runtime/state/thread-settled";
+import type { SnoozeUntilSettledLists } from "@t3tools/client-runtime/state/thread-snooze-until-settled";
 
 import { m, type MessageResolver } from "../i18n/messages";
 import { getFormattingLocale } from "../i18n/runtime";
@@ -18,9 +19,8 @@ import { toastManager } from "./ui/toast";
 export { snoozeWakeLabel, type SnoozePreset };
 
 /** What a snooze menu pick resolves to; a wait on threads also carries its 30-day cap. */
-export interface SnoozeChoice {
+export interface SnoozeChoice extends SnoozeUntilSettledLists {
   readonly snoozedUntil: string;
-  readonly untilSettledThreadIds?: ReadonlyArray<ThreadId>;
 }
 
 /** The snooze menu for a thread, from its environment's presets, read when the menu opens. */

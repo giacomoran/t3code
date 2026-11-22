@@ -1,6 +1,11 @@
 import {
+  snoozeUntilSettledLists,
+  type SnoozeUntilSettledLists,
+} from "@t3tools/client-runtime/state/thread-snooze-until-settled";
+import {
   THREAD_SNOOZE_UNTIL_SETTLED_CAP_MS,
   type EnvironmentId,
+  type ScopedThreadRef,
   type ThreadId,
 } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
@@ -14,7 +19,8 @@ export interface SnoozeUntilSettledRequest {
 }
 
 export interface SnoozeUntilSettledChoice {
-  readonly threadIds: ReadonlyArray<ThreadId>;
+  /** The picked threads, split into this environment's and linked ones. */
+  readonly untilSettled: SnoozeUntilSettledLists;
   /** The 30-day cap, counted from the confirm. */
   readonly snoozedUntil: string;
 }
@@ -45,16 +51,16 @@ export function requestSnoozeUntilSettled(
 
 export function finishSnoozeUntilSettledRequest(
   id: number,
-  threadIds: ReadonlyArray<ThreadId> | null,
+  picks: ReadonlyArray<ScopedThreadRef> | null,
 ) {
   const pending = appAtomRegistry.get(snoozeUntilSettledRequestAtom);
   if (pending?.id !== id) return;
   appAtomRegistry.set(snoozeUntilSettledRequestAtom, null);
   pending.resolve(
-    threadIds === null
+    picks === null
       ? null
       : {
-          threadIds,
+          untilSettled: snoozeUntilSettledLists(pending.environmentId, picks),
           snoozedUntil: new Date(Date.now() + THREAD_SNOOZE_UNTIL_SETTLED_CAP_MS).toISOString(),
         },
   );

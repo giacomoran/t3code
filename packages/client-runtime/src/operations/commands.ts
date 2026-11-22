@@ -26,6 +26,7 @@ import {
   type RunId,
   type RuntimeMode,
   type RuntimeRequestId,
+  type ScopedThreadRef,
   type ThreadId,
   type ThreadEnvMode,
   type UploadChatAttachment,
@@ -135,6 +136,8 @@ export interface SnoozeThreadInput extends ThreadCommandInput {
   readonly snoozedUntil: string;
   /** Wake early once all of these threads settle; `snoozedUntil` caps the wait. */
   readonly untilSettledThreadIds?: ReadonlyArray<ThreadId>;
+  /** Threads in environments this one links to, which must settle too. */
+  readonly untilSettledLinkedThreads?: ReadonlyArray<ScopedThreadRef>;
 }
 
 export interface UnsnoozeThreadInput extends ThreadCommandInput {
@@ -683,6 +686,9 @@ export const snoozeThread = Effect.fn("EnvironmentCommands.snoozeThread")(functi
     ...(input.untilSettledThreadIds === undefined
       ? {}
       : { untilSettledThreadIds: input.untilSettledThreadIds }),
+    ...(input.untilSettledLinkedThreads === undefined
+      ? {}
+      : { untilSettledLinkedThreads: input.untilSettledLinkedThreads }),
   });
 });
 

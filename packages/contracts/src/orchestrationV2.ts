@@ -49,6 +49,7 @@ import {
 } from "./baseSchemas.ts";
 import { AuthMcpClientAccess } from "./auth.ts";
 import { ChatAttachment } from "./chatAttachment.ts";
+import { ScopedThreadRef } from "./environment.ts";
 import { ThreadGuestShare } from "./guestShare.ts";
 import { StoredThreadTags, ThreadTag } from "./threadTags.ts";
 import { ThreadTitleRegenerationOutcome } from "./threadTitle.ts";
@@ -498,7 +499,7 @@ const OrchestrationV2LastTitleRegeneration = Schema.Struct({
   completedAt: Schema.DateTimeUtc,
 });
 
-/** Most threads one "until threads settle" snooze may wait on. */
+/** Most threads one "until threads settle" snooze may wait on, here and in linked environments. */
 export const THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS = 50;
 /** An "until threads settle" snooze also wakes after this long, in case they never settle. */
 export const THREAD_SNOOZE_UNTIL_SETTLED_CAP_MS = 30 * 24 * 60 * 60 * 1000;
@@ -552,6 +553,8 @@ export const OrchestrationV2AppThread = Schema.Struct({
   snoozedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   /** Threads this snooze waits on; absent or null for a plain time snooze. */
   snoozeUntilSettledThreadIds: Schema.optional(Schema.NullOr(Schema.Array(ThreadId))),
+  /** Threads in linked environments this snooze also waits on; absent or null for none. */
+  snoozeUntilSettledLinkedThreads: Schema.optional(Schema.NullOr(Schema.Array(ScopedThreadRef))),
   lastSnoozeWakeAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecovery)),
   guestShare: Schema.optional(Schema.NullOr(ThreadGuestShare)),
@@ -2492,6 +2495,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   snoozedUntil: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   snoozedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   snoozeUntilSettledThreadIds: Schema.optional(Schema.NullOr(Schema.Array(ThreadId))),
+  snoozeUntilSettledLinkedThreads: Schema.optional(Schema.NullOr(Schema.Array(ScopedThreadRef))),
   limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecovery)),
   pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
@@ -3446,6 +3450,13 @@ export const OrchestrationV2Command = Schema.Union([
         Schema.isMaxLength(THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS),
       ),
     ),
+    // Threads in environments this one links to; the cap counts both lists together.
+    untilSettledLinkedThreads: Schema.optional(
+      Schema.Array(ScopedThreadRef).check(
+        Schema.isMinLength(1),
+        Schema.isMaxLength(THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS),
+      ),
+    ),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.unsnooze"),
@@ -3453,6 +3464,8 @@ export const OrchestrationV2Command = Schema.Union([
     threadId: ThreadId,
     // Only the server sends "threads_settled", when every thread a snooze waits on has settled.
     reason: Schema.Literals(["user", "threads_settled"]),
+    // With "threads_settled": the snoozedAt of the snooze the server checked, so a newer one stays.
+    snoozedAt: Schema.optional(IsoDateTime),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.auto-settle.set"),

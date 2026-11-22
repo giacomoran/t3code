@@ -101,7 +101,7 @@ thread search), a project filter and a status filter (Working / Needs attention 
 Pick one or more threads; the snoozed thread wakes once **all** of them are settled. An
 archived or deleted thread counts as settled. The snooze also carries a 30-day timer, so
 it wakes then at the latest. Agents set it through `t3_thread_organize`
-(`untilSettledThreadIds`). Requested upstream in
+(`untilSettledThreadIds`, `untilSettledLinkedThreads`). Requested upstream in
 [discussion #36745](https://github.com/pingdotgg/t3code/discussions/36745).
 
 The list is `snoozeUntilSettledThreadIds` on the thread (thread JSON, no migration), set
@@ -115,10 +115,36 @@ events, to new snoozes and unarchived waiters (plus a startup sweep), and dispat
 clearing it. Clients therefore see an expired timer and show the usual woke indicator,
 labelled "Threads settled".
 
+**Across machines.** A snooze can also wait on threads in environments its server links
+to (upstream's Linked environments beta): `snoozeUntilSettledLinkedThreads` on the thread,
+`{ environmentId, threadId }` pairs set by `thread.snooze { untilSettledLinkedThreads }`,
+advertised through `threadSnoozeUntilSettledLinked`. The 50-thread cap counts both lists.
+The pickers add a machine filter and list threads of machines the waiter's server links to
+that the client is also connected to; a linked thread the client has no state for counts
+as open in the row and header, never as done. The orchestrator checks only that a link
+to each environment is stored (it must not wait on a peer); `t3_thread_organize` reads
+each linked thread once through `PeerForwarding` and refuses a missing one, an
+unreachable machine, or a list already all done. The worker, which runs beside
+`RemoteDelegation` in `server.ts` because it needs `PeerForwarding`, reads linked threads
+with `t3_thread_read` (forked off the event path, four reads at once, 30 s timeout) after
+local events and on a 60-second poll, backing off per environment up to 5 minutes while
+one fails. Settled, archived, and not found count as done; so does a link that is gone
+for good (forgotten here, or past its stored expiry), with a warning, since waking is the
+fail-safe. An unreachable machine never wakes it, and neither does a refusal over a link
+still stored here (revoked there, or a peer on an older build): relinking or updating the
+peer resumes the wait, and the cap bounds it. `t3_thread_organize` bounds each linked read
+to 30 s too. The wake names the `snoozedAt` it
+checked, and the decider refuses it when a newer snooze has replaced that one, since the
+decider cannot re-check the new snooze's linked threads itself.
+
 Known limitations, as the checks span threads without a cross-thread lock: a thread that
 reopens between the wake's check and its commit can wake the waiter early (it fails safe:
 the thread resurfaces); and two snoozes decided at once, A waiting on B and B on A, can both
-pass the cycle check, so both stay snoozed until Wake now or the 30-day cap.
+pass the cycle check, so both stay snoozed until Wake now or the 30-day cap. Across
+machines: the wait needs a link from the waiter's machine to the dependency's machine (a
+link the other way does not help); a linked thread is seen settling up to a minute late,
+longer while its machine is failing; and cycles through another machine are not detected,
+so Wake now or the cap ends them.
 
 ### Dropped: Claude and Codex quota reserves
 
@@ -283,12 +309,17 @@ Snooze until threads settle keeps its logic in new files
 `packages/client-runtime/src/state/threadSnoozeUntilSettled.ts`,
 `apps/web/src/components/SnoozeUntilSettledDialog.tsx`, `snoozeUntilSettled.logic.ts`,
 `apps/mobile/src/features/threads/SnoozeUntilSettledSheet.tsx`,
-`snoozeUntilSettledPicker.ts`). Its hunks in upstream files are the snooze validation and
-the list clearing in `Orchestrator.ts`, two shell lines in `ProjectionStore.ts`, the
-snooze contracts, `runtimeLayer.ts`, the MCP organize tool, client-runtime commands and
-undo, and the web and mobile snooze menus, rows and undo notices. `git show <commit> --stat`
-lists them. After a rebase, grep `Orchestrator.ts` for new places that clear
-`snoozedUntil`: each must clear `snoozeUntilSettledThreadIds` too.
+`snoozeUntilSettledPicker.ts`, `apps/mobile/src/state/snooze-until-settled.ts`). Its hunks
+in upstream files are the snooze validation, the list clearing and a `SqlClient` dependency
+(which reads the peer links table) in `Orchestrator.ts`, one `layerDatabase` line in
+`testkit/ProviderReplayHarness.ts`, two shell lines in `ProjectionStore.ts`, the worker's
+layer in `server.ts`, the snooze contracts and capabilities (`ServerEnvironment.ts`), the
+MCP organize tool and thread detail (whose fields grow the tool list budget in
+`apps/server/src/provider/agentContextBudget.json`), client-runtime commands and undo,
+the web `entities.ts` lookups, and the web and mobile snooze menus, rows and undo
+notices. `git show <commit> --stat` lists them. After a rebase, grep `Orchestrator.ts` for new places
+that clear `snoozedUntil`: each must clear `snoozeUntilSettledThreadIds` and
+`snoozeUntilSettledLinkedThreads` too.
 
 If a rebase conflicts, it will almost always be one of these small hunks.
 

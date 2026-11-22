@@ -5692,6 +5692,12 @@ describe("OrchestratorMcpService thread list", () => {
     {
       ...shell("thread:b-snoozed", "project:b", true, true, true),
       snoozeUntilSettledThreadIds: [ThreadId.make("thread:a-awake")],
+      snoozeUntilSettledLinkedThreads: [
+        {
+          environmentId: EnvironmentId.make("environment:box"),
+          threadId: ThreadId.make("thread:box"),
+        },
+      ],
     },
     {
       ...shell("thread:a-awaiting-command", "project:a", false),
@@ -5792,6 +5798,18 @@ describe("OrchestratorMcpService thread list", () => {
       assert.deepStrictEqual(
         listed.threads.map((thread) => thread.snoozeUntilSettledThreadIds),
         [undefined, [ThreadId.make("thread:a-awake")]],
+      );
+      assert.deepStrictEqual(
+        listed.threads.map((thread) => thread.snoozeUntilSettledLinkedThreads),
+        [
+          undefined,
+          [
+            {
+              environmentId: EnvironmentId.make("environment:box"),
+              threadId: ThreadId.make("thread:box"),
+            },
+          ],
+        ],
       );
       assert.deepStrictEqual(
         listed.threads.map((thread) => [thread.blockedOnThreadWait, thread.pendingBackgroundTasks]),

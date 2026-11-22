@@ -62,7 +62,9 @@ Enable **Settings → Labs → Boring sidebar (group by project)** on web/deskto
 
 Customize presets in **Settings → Threads → Snooze options** (durations like `3 hours` or times like `9:00 PM tomorrow`), or pick **Snooze → Custom…** for an exact date/time or duration. Choose **Wake thread** to bring a thread back early.
 
-Choose **Snooze → Until threads settle…** to wait on other work instead of a time: search and pick one or more threads in the same environment, and the snoozed thread comes back once all of them are settled. A picked thread that is archived or deleted counts as settled. If they never settle, it wakes after 30 days. The snoozed thread names the threads it is waiting on when you open it or, on web and desktop, hover it in the sidebar.
+Choose **Snooze → Until threads settle…** to wait on other work instead of a time: search and pick one or more threads, and the snoozed thread comes back once all of them are settled. A picked thread that is archived or deleted counts as settled. If they never settle, it wakes after 30 days. The snoozed thread names the threads it is waiting on when you open it or, on web and desktop, hover it in the sidebar.
+
+The picker also lists threads on other machines that the snoozed thread's machine [links to](remote-access.md#link-another-environment) and this app is connected to, with a filter by machine. Those threads are checked about once a minute, so the snoozed thread can come back up to a minute after the last one settles. If the link is removed on the snoozed thread's machine or expires, the snoozed thread comes back instead of waiting out the 30 days. If the other machine revokes the link, the snoozed thread keeps waiting until you link it again.
 
 ## Link a pull request
 

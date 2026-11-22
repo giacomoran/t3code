@@ -197,11 +197,7 @@ export function useThreadActionMenu(input: {
                   threadRef.environmentId,
                 );
         if (!preset) return;
-        const result = await snoozeThread(
-          threadRef,
-          preset.snoozedUntil,
-          preset.untilSettledThreadIds,
-        );
+        const result = await snoozeThread(threadRef, preset.snoozedUntil, preset);
         if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
           failureToast(m(msg("Failed to snooze thread")), squashAtomCommandFailure(result));
         }

@@ -19,6 +19,7 @@ import {
   parseThreadKey,
   threadKey,
 } from "@t3tools/client-runtime/state/entities";
+import { snoozeUntilSettledDependencies } from "@t3tools/client-runtime/state/thread-snooze-until-settled";
 import type { ScopedProjectRef, ScopedThreadRef } from "@t3tools/contracts";
 import type {
   EnvironmentId,
@@ -39,7 +40,7 @@ import {
   allEnvironmentProjectSnapshotsReadyAtom,
   allEnvironmentShellsBootstrappedAtom,
 } from "./shell";
-import { environmentThreadDetails, environmentThreadShells } from "./threads";
+import { environmentThreadDetails, environmentThreadShells, threadEnvironment } from "./threads";
 import { waitForAtomValue } from "./waitForAtomValue";
 import { m } from "../i18n/messages";
 
@@ -486,33 +487,60 @@ export function useThreadRelationshipShells(
   return useAtomValue(relationshipShellsAtomFamily(threadKey(ref)));
 }
 
+export function readEnvironmentSupportsSnoozeUntilSettledLinked(
+  environmentId: EnvironmentId,
+): boolean {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .threadSnoozeUntilSettledLinked === true
+  );
+}
+
+export interface SnoozeUntilSettledShells {
+  /** The loaded shells of the listed threads; deleted or unloaded ones are absent. */
+  readonly shells: ReadonlyArray<EnvironmentThreadShell>;
+  /** Listed threads' environments whose threads this client has, so a missing shell means done. */
+  readonly loadedEnvironmentIds: ReadonlySet<EnvironmentId>;
+}
+
+const EMPTY_SNOOZE_UNTIL_SETTLED_SHELLS: SnoozeUntilSettledShells = {
+  shells: [],
+  loadedEnvironmentIds: new Set(),
+};
+const EMPTY_SNOOZE_UNTIL_SETTLED_SHELLS_ATOM = Atom.make(EMPTY_SNOOZE_UNTIL_SETTLED_SHELLS).pipe(
+  Atom.withLabel("web-thread-snooze-until-settled-shells:empty"),
+);
+
 const snoozeUntilSettledShellsAtomFamily = Atom.family((key: string) => {
   const ref = parseThreadKey(key);
-  let previous: ReadonlyArray<EnvironmentThreadShell> = [];
+  let previous = EMPTY_SNOOZE_UNTIL_SETTLED_SHELLS;
   return Atom.make((get) => {
-    const threadIds =
-      get(environmentThreadShells.quietThreadShellAtom(ref))?.snoozeUntilSettledThreadIds ?? [];
-    const next = threadIds.flatMap((threadId) => {
-      const shell = get(
-        environmentThreadShells.quietThreadShellAtom({
-          environmentId: ref.environmentId,
-          threadId,
-        }),
-      );
+    const waiter = get(environmentThreadShells.quietThreadShellAtom(ref));
+    const dependencies = waiter === null ? [] : snoozeUntilSettledDependencies(waiter);
+    const shells = dependencies.flatMap((dependency) => {
+      const shell = get(environmentThreadShells.quietThreadShellAtom(dependency));
       return shell === null ? [] : [shell];
     });
-    if (arrayElementsEqual(previous, next)) return previous;
-    previous = next;
-    return next;
+    const loadedEnvironmentIds = [
+      ...new Set(dependencies.map((dependency) => dependency.environmentId)),
+    ].filter((environmentId) => get(threadEnvironment.snapshotAtom(environmentId)) !== null);
+    if (
+      arrayElementsEqual(previous.shells, shells) &&
+      arrayElementsEqual([...previous.loadedEnvironmentIds], loadedEnvironmentIds)
+    ) {
+      return previous;
+    }
+    previous = { shells, loadedEnvironmentIds: new Set(loadedEnvironmentIds) };
+    return previous;
   }).pipe(Atom.withLabel(`web-thread-snooze-until-settled-shells:${key}`));
 });
 
-/** The loaded shells of the threads `ref`'s snooze waits on; deleted or unloaded ones are absent. */
-export function useSnoozeUntilSettledShells(
-  ref: ScopedThreadRef | null,
-): ReadonlyArray<EnvironmentThreadShell> {
+/** What the client holds of the threads `ref`'s snooze waits on, here and in linked environments. */
+export function useSnoozeUntilSettledShells(ref: ScopedThreadRef | null): SnoozeUntilSettledShells {
   return useAtomValue(
-    ref === null ? EMPTY_THREAD_SHELLS_ATOM : snoozeUntilSettledShellsAtomFamily(threadKey(ref)),
+    ref === null
+      ? EMPTY_SNOOZE_UNTIL_SETTLED_SHELLS_ATOM
+      : snoozeUntilSettledShellsAtomFamily(threadKey(ref)),
   );
 }
 

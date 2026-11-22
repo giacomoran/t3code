@@ -7,8 +7,10 @@ import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
 import {
   isSnoozeDependencyDone,
   snoozedUntilSettledLabel,
+  snoozeUntilSettledCount,
+  type SnoozeUntilSettledLists,
 } from "@t3tools/client-runtime/state/thread-snooze-until-settled";
-import { AuthOrchestrationOperateScope, type ThreadId } from "@t3tools/contracts";
+import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Haptics from "expo-haptics";
 import { msg } from "gt-react-native";
@@ -260,7 +262,7 @@ export function useThreadListActions(): {
   readonly snoozeThread: (
     thread: EnvironmentThreadShell,
     snoozedUntil: string,
-    untilSettledThreadIds?: ReadonlyArray<ThreadId>,
+    untilSettled?: SnoozeUntilSettledLists,
   ) => Promise<boolean>;
   readonly unsnoozeThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
   readonly unsettleThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
@@ -374,6 +376,9 @@ export function useThreadListActions(): {
                       ...(step.untilSettledThreadIds === undefined
                         ? {}
                         : { untilSettledThreadIds: step.untilSettledThreadIds }),
+                      ...(step.untilSettledLinkedThreads === undefined
+                        ? {}
+                        : { untilSettledLinkedThreads: step.untilSettledLinkedThreads }),
                     },
                   });
                   if (result._tag === "Failure") {
@@ -426,10 +431,12 @@ export function useThreadListActions(): {
   const snoozeThread = async (
     thread: EnvironmentThreadShell,
     snoozedUntil: string,
-    untilSettledThreadIds?: ReadonlyArray<ThreadId>,
+    untilSettled: SnoozeUntilSettledLists = {},
   ) => {
+    const { untilSettledThreadIds, untilSettledLinkedThreads } = untilSettled;
+    const untilSettledCount = snoozeUntilSettledCount(untilSettled);
     // A wait on threads is never queued offline, so it needs the operate grant itself.
-    const triage = untilSettledThreadIds === undefined;
+    const triage = untilSettledCount === 0;
     if (!checkThreadOperationPermission(thread, m(msg("Could not snooze thread")), triage)) {
       return false;
     }
@@ -450,10 +457,13 @@ export function useThreadListActions(): {
         );
         return false;
       }
+      const capabilities = appAtomRegistry
+        .get(environmentServerConfigsAtom)
+        .get(thread.environmentId)?.environment.capabilities;
       if (
-        untilSettledThreadIds !== undefined &&
-        appAtomRegistry.get(environmentServerConfigsAtom).get(thread.environmentId)?.environment
-          .capabilities.threadSnoozeUntilSettled !== true
+        (untilSettledCount > 0 && capabilities?.threadSnoozeUntilSettled !== true) ||
+        (untilSettledLinkedThreads !== undefined &&
+          capabilities?.threadSnoozeUntilSettledLinked !== true)
       ) {
         Dialog.alert(
           m(msg("Could not snooze thread")),
@@ -486,6 +496,7 @@ export function useThreadListActions(): {
               threadId: thread.id,
               snoozedUntil,
               ...(untilSettledThreadIds === undefined ? {} : { untilSettledThreadIds }),
+              ...(untilSettledLinkedThreads === undefined ? {} : { untilSettledLinkedThreads }),
             },
           }),
         (result) => result._tag === "Success",
@@ -506,9 +517,7 @@ export function useThreadListActions(): {
         "Snoozed",
         claim,
         ThreadUndo.planThreadUndo("snooze"),
-        untilSettledThreadIds === undefined
-          ? undefined
-          : snoozedUntilSettledLabel(untilSettledThreadIds.length, m),
+        untilSettledCount === 0 ? undefined : snoozedUntilSettledLabel(untilSettledCount, m),
       );
       return true;
     })();
@@ -936,8 +945,8 @@ export function useThreadListActions(): {
       (
         thread: EnvironmentThreadShell,
         snoozedUntil: string,
-        untilSettledThreadIds?: ReadonlyArray<ThreadId>,
-      ) => snoozeThread(liveThread(thread), snoozedUntil, untilSettledThreadIds),
+        untilSettled?: SnoozeUntilSettledLists,
+      ) => snoozeThread(liveThread(thread), snoozedUntil, untilSettled),
     ),
     unsnoozeThread: useStableCallback((thread: EnvironmentThreadShell) =>
       unsnoozeThread(liveThread(thread)),

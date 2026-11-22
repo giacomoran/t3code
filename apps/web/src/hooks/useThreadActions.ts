@@ -7,7 +7,11 @@ import {
 } from "@t3tools/client-runtime/environment";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { canSnooze, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
-import { isSnoozeDependencyDone } from "@t3tools/client-runtime/state/thread-snooze-until-settled";
+import {
+  isSnoozeDependencyDone,
+  snoozeUntilSettledCount,
+  type SnoozeUntilSettledLists,
+} from "@t3tools/client-runtime/state/thread-snooze-until-settled";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import {
   AuthOrchestrationOperateScope,
@@ -959,12 +963,14 @@ export function useThreadActions() {
     });
   };
 
-  /** With `untilSettledThreadIds`, it wakes once they all settle; `snoozedUntil` caps the wait. */
+  /** With threads in `untilSettled`, it wakes once they all settle; `snoozedUntil` caps the wait. */
   const snoozeThread = async (
     target: ScopedThreadRef,
     snoozedUntil: string,
-    untilSettledThreadIds?: ReadonlyArray<ThreadId>,
+    untilSettled: SnoozeUntilSettledLists = {},
   ) => {
+    const { untilSettledThreadIds, untilSettledLinkedThreads } = untilSettled;
+    const untilSettledCount = snoozeUntilSettledCount(untilSettled);
     if (!readEnvironmentServerConfigLoaded(target.environmentId)) {
       return AsyncResult.failure(
         Cause.fail(
@@ -993,6 +999,7 @@ export function useThreadActions() {
         threadId: target.threadId,
         snoozedUntil,
         ...(untilSettledThreadIds === undefined ? {} : { untilSettledThreadIds }),
+        ...(untilSettledLinkedThreads === undefined ? {} : { untilSettledLinkedThreads }),
       },
     });
     if (result._tag !== "Success") {
@@ -1001,9 +1008,7 @@ export function useThreadActions() {
     }
     showThreadUndoNotice({
       action: "Snoozed",
-      ...(untilSettledThreadIds === undefined
-        ? {}
-        : { untilSettledCount: untilSettledThreadIds.length }),
+      ...(untilSettledCount === 0 ? {} : { untilSettledCount }),
       claim: action,
       undo: () => runUndoPlan(target, ThreadUndo.planThreadUndo("snooze")),
       failureTitle: m(msg("Failed to wake thread")),
@@ -1039,6 +1044,9 @@ export function useThreadActions() {
                 ...(step.untilSettledThreadIds === undefined
                   ? {}
                   : { untilSettledThreadIds: step.untilSettledThreadIds }),
+                ...(step.untilSettledLinkedThreads === undefined
+                  ? {}
+                  : { untilSettledLinkedThreads: step.untilSettledLinkedThreads }),
               },
             });
         }

@@ -667,13 +667,10 @@ function ThreadDetailBody(
     lastVisitedAt: props.selectedThread.lastVisitedAt,
     latestRunCompletedAt: props.selectedThread.latestRun?.completedAt ?? null,
   });
-  const snoozeUntilSettledStates = useSnoozeUntilSettledStates(
-    props.selectedThread.environmentId,
-    props.selectedThread.snoozeUntilSettledThreadIds,
-  );
+  const snoozeUntilSettledDependencyOf = useSnoozeUntilSettledStates(props.selectedThread);
   const snoozeUntilSettled = presentThreadSnoozeUntilSettled(props.selectedThread, {
     now: lifecycleNow,
-    threadById: (threadId) => snoozeUntilSettledStates.get(threadId),
+    dependencyOf: snoozeUntilSettledDependencyOf,
     resolve: messages,
   });
   const runStatusAction = async (action: "stop" | "wake" | "unsettle" | "dismiss") => {

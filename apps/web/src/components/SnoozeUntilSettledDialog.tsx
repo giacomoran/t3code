@@ -1,6 +1,8 @@
 import { useEffect, useId, useState, type KeyboardEvent } from "react";
 import { create } from "zustand";
+import { scopedProjectKey, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
+  isSnoozeUntilSettledSelected,
   resolveSnoozeUntilSettledCandidates,
   snoozeCandidateStatus,
   snoozeUntilSettledActionLabel,
@@ -14,7 +16,8 @@ import { resolveThreadActivityTimestamp } from "@t3tools/client-runtime/state/th
 import {
   THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS,
   type EnvironmentId,
-  type ProjectId,
+  type ScopedProjectRef,
+  type ScopedThreadRef,
   type ThreadId,
 } from "@t3tools/contracts";
 import { msg, T, useGT, useMessages } from "gt-react";
@@ -22,14 +25,20 @@ import { ArrowDownIcon, ArrowUpIcon, SearchIcon, XIcon } from "lucide-react";
 
 import { useNowMinute } from "../hooks/useNowMinute";
 import { cn } from "../lib/utils";
-import { useProjects, useVisibleThreadShells } from "../state/entities";
+import {
+  readEnvironmentSupportsSnoozeUntilSettledLinked,
+  useProjects,
+  useVisibleThreadShells,
+} from "../state/entities";
+import { useConnectedEnvironmentIds, useEnvironmentIdentities } from "../state/environments";
+import { useLinkedEnvironments } from "../state/peerLinks";
 import { useThreadSearch } from "../state/queries";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { resolveSidebarRowStatus } from "./Sidebar.logic";
 import type { SnoozeChoice } from "./Sidebar.snooze";
 import {
-  moveHighlightedThreadId,
-  resolveHighlightedThreadId,
+  moveHighlightedThreadKey,
+  resolveHighlightedThreadKey,
   resolveSnoozeUntilSettledKey,
   snoozeUntilSettledChoice,
   snoozeUntilSettledProjectOptions,
@@ -112,9 +121,14 @@ const STATUS_PRESENTATION = {
 } satisfies Record<SnoozeCandidateStatus, { label: string; className: string }>;
 
 const ALL_PROJECTS = "all";
+const ALL_ENVIRONMENTS = "all";
 
 function statusOf(thread: EnvironmentThreadShell): SnoozeCandidateStatus {
   return snoozeCandidateStatus(resolveSidebarRowStatus(thread));
+}
+
+function refOf(thread: EnvironmentThreadShell): ScopedThreadRef {
+  return { environmentId: thread.environmentId, threadId: thread.id };
 }
 
 function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
@@ -126,90 +140,139 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
   // The tick is a UTC minute without a zone; read as local time it would shift by the offset.
   const nowIso = `${nowMinute}:00.000Z`;
   const [query, setQuery] = useState("");
-  const [projectId, setProjectId] = useState<ProjectId | null>(null);
+  const [environmentFilter, setEnvironmentFilter] = useState<EnvironmentId | null>(null);
+  const [project, setProject] = useState<ScopedProjectRef | null>(null);
   const [status, setStatus] = useState<SnoozeCandidateStatusFilter>("all");
-  const [selectedThreadIds, setSelectedThreadIds] = useState<ReadonlyArray<ThreadId>>([]);
+  const [selected, setSelected] = useState<ReadonlyArray<ScopedThreadRef>>([]);
   // Picked threads lead the list, but only from the next search or filter change, so a row
   // does not jump away from the highlight the moment it is toggled.
-  const [leadingThreadIds, setLeadingThreadIds] = useState<ReadonlyArray<ThreadId>>([]);
-  const [highlightedThreadId, setHighlightedThreadId] = useState<ThreadId | null>(null);
+  const [leading, setLeading] = useState<ReadonlyArray<ScopedThreadRef>>([]);
+  const [highlightedThreadKey, setHighlightedThreadKey] = useState<string | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
+
+  // Threads of machines the snoozed thread's server links to can be picked too, when that
+  // server can wait on them and this client has their threads.
+  const supportsLinked = readEnvironmentSupportsSnoozeUntilSettledLinked(environmentId);
+  const linkedEnvironments = useLinkedEnvironments(supportsLinked ? environmentId : null);
+  const connectedEnvironmentIds = useConnectedEnvironmentIds();
+  const environmentIds = [
+    environmentId,
+    ...connectedEnvironmentIds.filter(
+      (candidate) => candidate !== environmentId && linkedEnvironments.has(candidate),
+    ),
+  ];
+  const identities = useEnvironmentIdentities();
+  const environmentLabelById = new Map(
+    identities.map((identity) => [identity.environmentId, identity.label] as const),
+  );
+  const environmentLabelOf = (thread: EnvironmentThreadShell) =>
+    environmentLabelById.get(thread.environmentId) ??
+    linkedEnvironments.get(thread.environmentId) ??
+    null;
+  const showsEnvironments = environmentIds.length > 1;
 
   const shells = useVisibleThreadShells();
   const projects = useProjects();
-  const projectTitleById = new Map(
-    projects
-      .filter((project) => project.environmentId === environmentId)
-      .map((project) => [project.id, project.title] as const),
+  const projectTitleByKey = new Map(
+    projects.map(
+      (candidate) =>
+        [
+          scopedProjectKey({ environmentId: candidate.environmentId, projectId: candidate.id }),
+          candidate.title,
+        ] as const,
+    ),
   );
   const projectTitleOf = (thread: EnvironmentThreadShell) =>
-    projectTitleById.get(thread.projectId) ?? null;
+    projectTitleByKey.get(
+      scopedProjectKey({ environmentId: thread.environmentId, projectId: thread.projectId }),
+    ) ?? null;
+  const searchEnvironmentIds =
+    project !== null
+      ? [project.environmentId]
+      : environmentFilter !== null
+        ? [environmentFilter]
+        : environmentIds;
   const messageSearch = useThreadSearch(
-    [environmentId],
+    searchEnvironmentIds,
     query,
-    projectId === null ? {} : { projectIds: [projectId] },
+    project === null ? {} : { projectIds: [project.projectId] },
   );
-  const messageMatchThreadIds = new Set(
-    messageSearch.matches
-      .filter((match) => match.environmentId === environmentId)
-      .map((match) => match.threadId),
-  );
+  const messageMatchThreadKeys = new Set(messageSearch.matches.map(scopedThreadKey));
 
   // Every thread the snooze could wait on, before the search and filters narrow it.
+  const candidateFilters = {
+    environmentId,
+    environmentIds,
+    excludeThreadIds,
+    statusOf,
+    projectTitleOf,
+    environmentLabelOf,
+    now: nowIso,
+  };
   const openThreads = resolveSnoozeUntilSettledCandidates({
+    ...candidateFilters,
     threads: shells,
-    environmentId,
-    excludeThreadIds,
-    selectedThreadIds: [],
+    selected: [],
     query: "",
-    projectId: null,
+    environmentFilter: null,
+    project: null,
     status: "all",
-    statusOf,
-    projectTitleOf,
-    now: nowIso,
   });
-  const openThreadById = new Map(openThreads.map((thread) => [thread.id, thread] as const));
+  const openThreadByKey = new Map(
+    openThreads.map((thread) => [scopedThreadKey(refOf(thread)), thread] as const),
+  );
   const candidates = resolveSnoozeUntilSettledCandidates({
+    ...candidateFilters,
     threads: openThreads,
-    environmentId,
-    excludeThreadIds,
-    selectedThreadIds: leadingThreadIds,
+    selected: leading,
     query,
-    messageMatchThreadIds,
-    projectId,
+    messageMatchThreadKeys,
+    environmentFilter,
+    project,
     status,
-    statusOf,
-    projectTitleOf,
-    now: nowIso,
   });
-  const candidateIds = candidates.map((thread) => thread.id);
+  const candidateKeys = candidates.map((thread) => scopedThreadKey(refOf(thread)));
   // A picked thread that settled or went away meanwhile has nothing left to wait for.
-  const selectedThreads = selectedThreadIds.flatMap((threadId) => {
-    const thread = openThreadById.get(threadId);
+  const selectedThreads = selected.flatMap((ref) => {
+    const thread = openThreadByKey.get(scopedThreadKey(ref));
     return thread === undefined ? [] : [thread];
   });
-  const projectOptions = snoozeUntilSettledProjectOptions(openThreads, projectTitleOf);
-  const highlighted = resolveHighlightedThreadId(candidateIds, highlightedThreadId);
-  const optionId = (threadId: ThreadId) => `${listId}-${threadId}`;
-
-  const toggle = (threadId: ThreadId) => {
-    setSelectedThreadIds((current) => toggleSnoozeUntilSettledSelection(current, threadId));
+  const projectOptions = snoozeUntilSettledProjectOptions(
+    environmentFilter === null
+      ? openThreads
+      : openThreads.filter((thread) => thread.environmentId === environmentFilter),
+    projectTitleOf,
+  );
+  const projectOptionLabel = (option: (typeof projectOptions)[number]) => {
+    const label = environmentLabelById.get(option.project.environmentId);
+    return showsEnvironments && label !== undefined ? `${option.title} · ${label}` : option.title;
   };
-  const confirm = (threadIds: ReadonlyArray<ThreadId>) => {
-    if (threadIds.length === 0) return;
+  const highlighted = resolveHighlightedThreadKey(candidateKeys, highlightedThreadKey);
+  const optionId = (threadKey: string) => `${listId}-${threadKey}`;
+
+  const toggle = (ref: ScopedThreadRef) => {
+    setSelected((current) => toggleSnoozeUntilSettledSelection(current, ref));
+  };
+  const toggleKey = (threadKey: string) => {
+    const thread = openThreadByKey.get(threadKey);
+    if (thread === undefined) throw new Error(`Thread ${threadKey} is not listed`);
+    toggle(refOf(thread));
+  };
+  const confirm = (picks: ReadonlyArray<ScopedThreadRef>) => {
+    if (picks.length === 0) return;
     // oxlint-disable-next-line react/purity -- runs in an event handler (oxc#27309)
-    finish(snoozeUntilSettledChoice(threadIds, new Date()));
+    finish(snoozeUntilSettledChoice(environmentId, picks, new Date()));
   };
   const narrow = (apply: () => void) => {
     apply();
-    setLeadingThreadIds(selectedThreadIds);
-    setHighlightedThreadId(null);
+    setLeading(selected);
+    setHighlightedThreadKey(null);
     setIsNavigating(false);
   };
-  const highlight = (threadId: ThreadId | null) => {
-    setHighlightedThreadId(threadId);
-    if (threadId !== null) {
-      document.getElementById(optionId(threadId))?.scrollIntoView({ block: "nearest" });
+  const highlight = (threadKey: string | null) => {
+    setHighlightedThreadKey(threadKey);
+    if (threadKey !== null) {
+      document.getElementById(optionId(threadKey))?.scrollIntoView({ block: "nearest" });
     }
   };
 
@@ -227,20 +290,24 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
     if (action === "move-down" || action === "move-up") {
       setIsNavigating(true);
       highlight(
-        moveHighlightedThreadId(candidateIds, highlighted, action === "move-down" ? "down" : "up"),
+        moveHighlightedThreadKey(
+          candidateKeys,
+          highlighted,
+          action === "move-down" ? "down" : "up",
+        ),
       );
       return;
     }
     if (action === "toggle") {
-      toggle(highlighted!);
+      toggleKey(highlighted!);
       return;
     }
     if (action === "confirm") {
-      confirm(selectedThreads.map((thread) => thread.id));
+      confirm(selectedThreads.map(refOf));
       return;
     }
     if (action === "toggle-and-confirm") {
-      confirm([highlighted!]);
+      confirm([refOf(openThreadByKey.get(highlighted!)!)]);
       return;
     }
     throw new Error(`Unreachable: unexpected key action ${action satisfies never}`);
@@ -250,7 +317,9 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
   const nowMs = Date.parse(nowIso);
   const emptyMessage =
     openThreads.length === 0
-      ? gt("No other open threads in this environment to wait on.")
+      ? showsEnvironments
+        ? gt("No other open threads to wait on.")
+        : gt("No other open threads in this environment to wait on.")
       : messageSearch.isPending
         ? gt("Searching…")
         : gt("No threads match.");
@@ -292,17 +361,55 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
             onKeyDown={handleSearchKeyDown}
           />
           <div className="flex flex-wrap items-center gap-2">
+            {showsEnvironments ? (
+              <Select
+                value={environmentFilter ?? ALL_ENVIRONMENTS}
+                items={{
+                  [ALL_ENVIRONMENTS]: gt("All machines"),
+                  ...Object.fromEntries(
+                    environmentIds.map((candidate) => [
+                      candidate,
+                      environmentLabelById.get(candidate) ?? candidate,
+                    ]),
+                  ),
+                }}
+                onValueChange={(value) => {
+                  const next = environmentIds.find((candidate) => candidate === value) ?? null;
+                  narrow(() => {
+                    setEnvironmentFilter(next);
+                    setProject(null);
+                  });
+                }}
+              >
+                <SelectTrigger size="sm" className="w-auto min-w-36" aria-label={gt("Machine")}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectPopup>
+                  <SelectItem value={ALL_ENVIRONMENTS}>{gt("All machines")}</SelectItem>
+                  {environmentIds.map((candidate) => (
+                    <SelectItem key={candidate} value={candidate}>
+                      {environmentLabelById.get(candidate) ?? candidate}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
+            ) : null}
             <Select
-              value={projectId ?? ALL_PROJECTS}
+              value={project === null ? ALL_PROJECTS : scopedProjectKey(project)}
               items={{
                 [ALL_PROJECTS]: gt("All projects"),
                 ...Object.fromEntries(
-                  projectOptions.map((option) => [option.projectId, option.title]),
+                  projectOptions.map((option) => [
+                    scopedProjectKey(option.project),
+                    projectOptionLabel(option),
+                  ]),
                 ),
               }}
               onValueChange={(value) => {
-                const option = projectOptions.find((candidate) => candidate.projectId === value);
-                narrow(() => setProjectId(option?.projectId ?? null));
+                const option = projectOptions.find(
+                  (candidate) => scopedProjectKey(candidate.project) === value,
+                );
+                narrow(() => setProject(option?.project ?? null));
               }}
             >
               <SelectTrigger size="sm" className="w-auto min-w-36" aria-label={gt("Project")}>
@@ -311,8 +418,11 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
               <SelectPopup>
                 <SelectItem value={ALL_PROJECTS}>{gt("All projects")}</SelectItem>
                 {projectOptions.map((option) => (
-                  <SelectItem key={option.projectId} value={option.projectId}>
-                    {option.title}
+                  <SelectItem
+                    key={scopedProjectKey(option.project)}
+                    value={scopedProjectKey(option.project)}
+                  >
+                    {projectOptionLabel(option)}
                   </SelectItem>
                 ))}
               </SelectPopup>
@@ -335,14 +445,19 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
           {selectedThreads.length > 0 ? (
             <div className="flex flex-wrap gap-1.5" aria-label={gt("Picked threads")}>
               {selectedThreads.map((thread) => (
-                <Badge key={thread.id} variant="outline" size="lg" className="max-w-full">
+                <Badge
+                  key={scopedThreadKey(refOf(thread))}
+                  variant="outline"
+                  size="lg"
+                  className="max-w-full"
+                >
                   <span className="truncate">{thread.title}</span>
                   <Button
                     type="button"
                     size="icon-micro"
                     variant="ghost-muted"
                     aria-label={gt("Remove {title}", { title: thread.title })}
-                    onClick={() => toggle(thread.id)}
+                    onClick={() => toggle(refOf(thread))}
                   >
                     <XIcon />
                   </Button>
@@ -350,7 +465,7 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
               ))}
             </div>
           ) : null}
-          {selectedThreadIds.length >= THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS ? (
+          {selected.length >= THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS ? (
             <p className="text-muted-foreground text-xs">{snoozeUntilSettledLimitHint(messages)}</p>
           ) : null}
           <div
@@ -367,29 +482,38 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
               </div>
             ) : (
               candidates.map((thread) => {
-                const isSelected = selectedThreadIds.includes(thread.id);
+                const ref = refOf(thread);
+                const threadKey = scopedThreadKey(ref);
+                const isSelected = isSnoozeUntilSettledSelected(selected, ref);
                 const threadStatus = STATUS_PRESENTATION[statusOf(thread)];
                 const activityAt = resolveThreadActivityTimestamp(thread);
                 const projectTitle = projectTitleOf(thread);
+                const environmentLabel = showsEnvironments ? environmentLabelOf(thread) : null;
                 return (
                   <div
-                    key={thread.id}
-                    id={optionId(thread.id)}
+                    key={threadKey}
+                    id={optionId(threadKey)}
                     role="option"
                     aria-selected={isSelected}
-                    data-highlighted={thread.id === highlighted || undefined}
+                    data-highlighted={threadKey === highlighted || undefined}
                     className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 data-highlighted:bg-foreground/[0.09]"
                     // Keeps focus in the search box, which drives the keyboard.
                     onMouseDown={(event) => event.preventDefault()}
                     onMouseMove={() => {
-                      if (thread.id !== highlighted) setHighlightedThreadId(thread.id);
+                      if (threadKey !== highlighted) setHighlightedThreadKey(threadKey);
                     }}
-                    onClick={() => toggle(thread.id)}
+                    onClick={() => toggle(ref)}
                   >
                     <CheckboxMark checked={isSelected} />
                     <div className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate text-sm">{thread.title}</span>
                       <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground text-xs">
+                        {environmentLabel === null ? null : (
+                          <>
+                            <span className="shrink-0">{environmentLabel}</span>
+                            <span aria-hidden>·</span>
+                          </>
+                        )}
                         {projectTitle === null ? null : (
                           <>
                             <span className="truncate">{projectTitle}</span>
@@ -447,7 +571,7 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
           <Button
             type="button"
             disabled={selectedThreads.length === 0}
-            onClick={() => confirm(selectedThreads.map((thread) => thread.id))}
+            onClick={() => confirm(selectedThreads.map(refOf))}
           >
             {selectedThreads.length === 0
               ? gt("Snooze", { $context: "button: snooze the thread" })

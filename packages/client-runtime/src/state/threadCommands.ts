@@ -99,6 +99,7 @@ function applySettle(
         snoozedAt: null,
         snoozedUntil: null,
         snoozeUntilSettledThreadIds: null,
+        snoozeUntilSettledLinkedThreads: null,
       };
 }
 
@@ -107,7 +108,10 @@ function applySnooze(
   snoozedUntil: string,
   now: DateTime.Utc,
   accepted: boolean,
-  untilSettledThreadIds?: OrchestrationV2ThreadShell["snoozeUntilSettledThreadIds"],
+  untilSettled: {
+    readonly untilSettledThreadIds?: OrchestrationV2ThreadShell["snoozeUntilSettledThreadIds"];
+    readonly untilSettledLinkedThreads?: OrchestrationV2ThreadShell["snoozeUntilSettledLinkedThreads"];
+  } = {},
 ): OrchestrationV2ThreadShell {
   return (!accepted &&
     ((thread.pendingRuntimeRequest !== null &&
@@ -119,7 +123,8 @@ function applySnooze(
         ...thread,
         snoozedUntil: DateTime.makeUnsafe(snoozedUntil),
         snoozedAt: now,
-        snoozeUntilSettledThreadIds: untilSettledThreadIds ?? null,
+        snoozeUntilSettledThreadIds: untilSettled.untilSettledThreadIds ?? null,
+        snoozeUntilSettledLinkedThreads: untilSettled.untilSettledLinkedThreads ?? null,
       };
 }
 
@@ -571,7 +576,10 @@ export function createThreadEnvironmentAtoms<R, E>(
   const snoozeQueuedWhenOffline: typeof commands.snooze = {
     label: commands.snooze.label,
     run: (registry, target) =>
-      (target.input.untilSettledThreadIds?.length ? commands.snooze : queuedSnooze).run(
+      (target.input.untilSettledThreadIds?.length || target.input.untilSettledLinkedThreads?.length
+        ? commands.snooze
+        : queuedSnooze
+      ).run(
         registry,
         target,
       ),
@@ -640,7 +648,7 @@ export function createThreadEnvironmentAtoms<R, E>(
       "settle",
     ),
     snooze: optimistic.wrap(snoozeQueuedWhenOffline, (thread, input, now, accepted) =>
-      applySnooze(thread, input.snoozedUntil, now, accepted, input.untilSettledThreadIds),
+      applySnooze(thread, input.snoozedUntil, now, accepted, input),
     ),
     unsnooze: triage.cancelQueued(
       optimistic.wrap(commands.unsnooze, (thread) => ({
@@ -648,6 +656,7 @@ export function createThreadEnvironmentAtoms<R, E>(
         snoozedUntil: null,
         snoozedAt: null,
         snoozeUntilSettledThreadIds: null,
+        snoozeUntilSettledLinkedThreads: null,
       })),
       "snooze",
     ),
@@ -669,6 +678,7 @@ export function createThreadEnvironmentAtoms<R, E>(
       snoozedUntil: null,
       snoozedAt: null,
       snoozeUntilSettledThreadIds: null,
+      snoozeUntilSettledLinkedThreads: null,
     })),
     unpin: optimistic.wrap(commands.unpin, (thread) => ({
       ...thread,

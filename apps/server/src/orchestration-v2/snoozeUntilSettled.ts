@@ -1,10 +1,15 @@
 import {
   THREAD_SNOOZE_UNTIL_SETTLED_CAP_MS,
+  THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS,
+  type EnvironmentId,
   type OrchestrationV2AppThread,
+  type ScopedThreadRef,
   type ThreadId,
 } from "@t3tools/contracts";
+import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import type * as SqlClient from "effect/sql/SqlClient";
 
 import type { ProjectionStoreV2Shape } from "./ProjectionStore.ts";
 
@@ -31,17 +36,33 @@ export function isSnoozeDependencyDone(thread: OrchestrationV2AppThread | null):
   );
 }
 
+/** Whether this environment keeps a link to `environmentId`, read here without asking the peer. */
+export const isEnvironmentLinked = (sql: SqlClient.SqlClient, environmentId: EnvironmentId) =>
+  sql<{ readonly found: number }>`
+    SELECT 1 AS found FROM peer_environment_links WHERE environment_id = ${environmentId}
+  `.pipe(
+    NodeSqliteClient.readOnly,
+    Effect.map((rows) => rows.length > 0),
+  );
+
+export interface SnoozeWaitingDependencies {
+  readonly threadIds: ReadonlyArray<ThreadId>;
+  /** Threads in linked environments, which only a read through the link can check. */
+  readonly linkedThreads: ReadonlyArray<ScopedThreadRef>;
+}
+
 /** The threads a still-running snooze waits on; null for a time snooze or an ended snooze. */
-export function snoozeWaitingThreadIds(
+export function snoozeWaitingDependencies(
   thread: OrchestrationV2AppThread,
   nowMs: number,
-): ReadonlyArray<ThreadId> | null {
-  const threadIds = thread.snoozeUntilSettledThreadIds;
-  if (threadIds == null || threadIds.length === 0) return null;
+): SnoozeWaitingDependencies | null {
+  const threadIds = thread.snoozeUntilSettledThreadIds ?? [];
+  const linkedThreads = thread.snoozeUntilSettledLinkedThreads ?? [];
+  if (threadIds.length === 0 && linkedThreads.length === 0) return null;
   if (thread.snoozedUntil == null || DateTime.toEpochMillis(thread.snoozedUntil) <= nowMs) {
     return null;
   }
-  return threadIds;
+  return { threadIds, linkedThreads };
 }
 
 /** Whether every thread a snooze waits on is done, read from current state. */
@@ -53,7 +74,7 @@ export const areSnoozeDependenciesDone = Effect.fn("snoozeUntilSettled.areDepend
 );
 
 export type SnoozeUntilSettledValidation =
-  | { readonly type: "valid"; readonly threadIds: ReadonlyArray<ThreadId> }
+  | ({ readonly type: "valid" } & SnoozeWaitingDependencies)
   | { readonly type: "invalid"; readonly cause: string };
 
 // Clients send now plus the cap from their own clock, which may run a little ahead.
@@ -62,15 +83,18 @@ const SNOOZE_UNTIL_SETTLED_CAP_SKEW_MS = 60 * 60 * 1000;
 /**
  * Dedupes the threads a snooze will wait on and rejects lists that could never wake it early:
  * itself, unknown threads, only finished threads, or a thread already waiting on this one.
- * The wake time is the cap, so it may be at most 30 days out.
+ * Linked threads need only a stored link: reading them would wait on the peer. The wake time
+ * is the cap, so it may be at most 30 days out.
  */
-export const validateSnoozeUntilSettledThreadIds = Effect.fn("snoozeUntilSettled.validate")(
-  function* <E>(input: {
+export const validateSnoozeUntilSettledDependencies = Effect.fn("snoozeUntilSettled.validate")(
+  function* <E, ELink>(input: {
     readonly threadId: ThreadId;
     readonly threadIds: ReadonlyArray<ThreadId>;
+    readonly linkedThreads: ReadonlyArray<ScopedThreadRef>;
     readonly snoozedUntilMs: number;
     readonly nowMs: number;
     readonly loadThread: LoadSnoozeDependency<E>;
+    readonly isEnvironmentLinked: (environmentId: EnvironmentId) => Effect.Effect<boolean, ELink>;
   }) {
     const invalid = (cause: string): SnoozeUntilSettledValidation => ({ type: "invalid", cause });
     if (
@@ -83,14 +107,32 @@ export const validateSnoozeUntilSettledThreadIds = Effect.fn("snoozeUntilSettled
     if (threadIds.includes(input.threadId)) {
       return invalid(`Thread ${input.threadId} cannot wait on itself to settle.`);
     }
+    const linkedThreads = [
+      ...new Map(
+        input.linkedThreads.map((ref) => [`${ref.environmentId}:${ref.threadId}`, ref] as const),
+      ).values(),
+    ];
+    if (threadIds.length + linkedThreads.length > THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS) {
+      return invalid(
+        `A snooze until threads settle waits on at most ${THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS} threads.`,
+      );
+    }
 
-    // Every listed thread must exist here, and at least one must still be open.
+    // A linked thread is reached through this environment's link to its environment.
+    for (const environmentId of new Set(linkedThreads.map((ref) => ref.environmentId))) {
+      if (!(yield* input.isEnvironmentLinked(environmentId))) {
+        return invalid(`Environment ${environmentId} is not linked from this environment.`);
+      }
+    }
+
+    // Every listed thread must exist here, and at least one must still be open. Linked
+    // threads count as open: only the worker reads them.
     const dependencies = yield* Effect.forEach(threadIds, input.loadThread);
     const unknownIndex = dependencies.findIndex((dependency) => dependency === null);
     if (unknownIndex !== -1) {
       return invalid(`Thread ${threadIds[unknownIndex]} does not exist.`);
     }
-    if (dependencies.every(isSnoozeDependencyDone)) {
+    if (linkedThreads.length === 0 && dependencies.every(isSnoozeDependencyDone)) {
       return invalid("Every listed thread is already settled, archived, or deleted.");
     }
 
@@ -102,7 +144,8 @@ export const validateSnoozeUntilSettledThreadIds = Effect.fn("snoozeUntilSettled
       for (const dependency of frontier) {
         if (visited.has(dependency.id)) continue;
         visited.add(dependency.id);
-        const waitingThreadIds = snoozeWaitingThreadIds(dependency, input.nowMs) ?? [];
+        const waitingThreadIds =
+          snoozeWaitingDependencies(dependency, input.nowMs)?.threadIds ?? [];
         if (waitingThreadIds.includes(input.threadId)) {
           return invalid(
             `Thread ${dependency.id} already waits on thread ${input.threadId} to settle.`,
@@ -114,6 +157,6 @@ export const validateSnoozeUntilSettledThreadIds = Effect.fn("snoozeUntilSettled
         (dependency) => dependency !== null,
       );
     }
-    return { type: "valid", threadIds } satisfies SnoozeUntilSettledValidation;
+    return { type: "valid", threadIds, linkedThreads } satisfies SnoozeUntilSettledValidation;
   },
 );

@@ -20,12 +20,14 @@ import {
   NonNegativeInt,
   ProjectId,
   clampedPositiveInt,
+  ScopedThreadRef,
   THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS,
 } from "@t3tools/contracts";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Schema from "effect/Schema";
 import { McpSchema, Tool, Toolkit } from "effect/ai";
 
+import * as PeerForwarding from "../../../peer/PeerForwarding.ts";
 import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
 import * as ProviderRegistry from "../../../provider/ProviderRegistry.ts";
 import * as ScheduledTaskService from "../../../scheduledTasks/ScheduledTaskService.ts";
@@ -34,7 +36,7 @@ import * as McpInvocationContext from "../../McpInvocationContext.ts";
 
 const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
   description:
-    "Pin, snooze, settle, archive, or mark a thread unread. Omit `threadId` for this thread. `snooze` needs `snoozedUntil`, `untilSettledThreadIds`, or both: with ids it wakes once all of them are settled, archived, or deleted, or at `snoozedUntil` (default and at most 30 days out). Settling this thread applies at turn end. A failed turn or queued message leaves it active.",
+    "Pin, snooze, settle, archive, or mark a thread unread. Omit `threadId` for this thread. `snooze` needs `snoozedUntil` or threads to wait on: `untilSettledThreadIds` here, `untilSettledLinkedThreads` in linked environments (see t3_environment_links). It wakes once all of them are settled, archived, or deleted, or at `snoozedUntil` (default and at most 30 days out). Settling this thread applies at turn end. A failed turn or queued message leaves it active.",
   parameters: Schema.Struct({
     environmentId: OrchestratorMcpEnvironmentTarget,
     threadId: Schema.optional(ThreadId),
@@ -53,6 +55,11 @@ const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
     untilSettledThreadIds: Schema.optional(
       Schema.Array(ThreadId).check(Schema.isMaxLength(THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS)),
     ),
+    untilSettledLinkedThreads: Schema.optional(
+      Schema.Array(ScopedThreadRef).check(
+        Schema.isMaxLength(THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS),
+      ),
+    ),
   }),
   success: Schema.Union([
     OrchestrationV2DispatchCommandResult,
@@ -64,6 +71,8 @@ const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
     McpInvocationContext.McpInvocationContext,
     ThreadManagementService.ThreadManagementService,
     SecureRandom.SecureRandom,
+    // Reads the threads a snooze waits on in linked environments.
+    PeerForwarding.PeerForwarding,
   ],
 })
   .annotate(Tool.Title, "Organize a thread")

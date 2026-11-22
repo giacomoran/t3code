@@ -930,17 +930,27 @@ function threadSettlement(
 
 function threadSnooze(
   thread: Parameters<typeof isSnoozed>[0] &
-    Pick<OrchestrationV2ThreadShell, "snoozeUntilSettledThreadIds">,
+    Pick<
+      OrchestrationV2ThreadShell,
+      "snoozeUntilSettledThreadIds" | "snoozeUntilSettledLinkedThreads"
+    >,
   nowMs: number,
-): Pick<OrchestratorMcpThreadListItem, "snoozed" | "snoozedUntil" | "snoozeUntilSettledThreadIds"> {
+): Pick<
+  OrchestratorMcpThreadListItem,
+  "snoozed" | "snoozedUntil" | "snoozeUntilSettledThreadIds" | "snoozeUntilSettledLinkedThreads"
+> {
   const snoozed = isSnoozed(thread, nowMs);
   const untilSettledThreadIds = thread.snoozeUntilSettledThreadIds ?? [];
+  const untilSettledLinkedThreads = thread.snoozeUntilSettledLinkedThreads ?? [];
   return {
     snoozed,
     snoozedUntil:
       snoozed && thread.snoozedUntil != null ? DateTime.formatIso(thread.snoozedUntil) : null,
     ...(snoozed && untilSettledThreadIds.length > 0
       ? { snoozeUntilSettledThreadIds: untilSettledThreadIds }
+      : {}),
+    ...(snoozed && untilSettledLinkedThreads.length > 0
+      ? { snoozeUntilSettledLinkedThreads: untilSettledLinkedThreads }
       : {}),
   };
 }

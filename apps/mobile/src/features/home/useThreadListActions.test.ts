@@ -110,6 +110,7 @@ vi.mock("../../state/atom-registry", async () => {
                             threadSettlement: true,
                             threadSnooze: true,
                             threadSnoozeUntilSettled: true,
+                            threadSnoozeUntilSettledLinked: true,
                             threadPinning: true,
                             threadPinReorder: true,
                             threadTitleRegeneration: true,
@@ -535,8 +536,14 @@ describe("thread action undo", () => {
   it("snoozes until threads settle and says so in the undo notice", async () => {
     const thread = makeThread();
     const dependencies = [ThreadId.make("first"), ThreadId.make("second")];
+    const linked = [
+      { environmentId: EnvironmentId.make("environment-box"), threadId: ThreadId.make("box") },
+    ];
     expect(
-      await useThreadListActions().snoozeThread(thread, "2099-01-01T09:00:00.000Z", dependencies),
+      await useThreadListActions().snoozeThread(thread, "2099-01-01T09:00:00.000Z", {
+        untilSettledThreadIds: dependencies,
+        untilSettledLinkedThreads: linked,
+      }),
     ).toBe(true);
     expect(state.requests.at(-1)).toMatchObject({
       action: "snooze",
@@ -544,9 +551,10 @@ describe("thread action undo", () => {
         threadId: thread.id,
         snoozedUntil: "2099-01-01T09:00:00.000Z",
         untilSettledThreadIds: dependencies,
+        untilSettledLinkedThreads: linked,
       },
     });
-    expect(readThreadUndoNotice()?.message).toBe("Snoozed until 2 threads settle");
+    expect(readThreadUndoNotice()?.message).toBe("Snoozed until 3 threads settle");
   });
 
   // regression: #21401 restore archive and thread action undo

@@ -15,6 +15,7 @@ import type {
   ProviderDriverKind,
   ProviderInstanceId,
   RunId,
+  ScopedThreadRef,
   ThreadId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -201,6 +202,8 @@ export interface EnvironmentThreadShell {
   readonly snoozedAt: string | null;
   /** Threads the snooze waits on to settle; absent or null for a time snooze. */
   readonly snoozeUntilSettledThreadIds?: ReadonlyArray<ThreadId> | null;
+  /** Threads in linked environments the snooze also waits on. */
+  readonly snoozeUntilSettledLinkedThreads?: ReadonlyArray<ScopedThreadRef> | null;
   readonly limitRecovery?: import("@t3tools/contracts").OrchestrationV2LimitRecovery | null;
   readonly pinnedAt: string | null;
   readonly autoSettleDisabledAt?: string | null;
@@ -362,6 +365,7 @@ export function presentThreadShell(
     snoozedUntil: nullableIso(thread.snoozedUntil ?? null),
     snoozedAt: nullableIso(thread.snoozedAt ?? null),
     snoozeUntilSettledThreadIds: thread.snoozeUntilSettledThreadIds ?? null,
+    snoozeUntilSettledLinkedThreads: thread.snoozeUntilSettledLinkedThreads ?? null,
     limitRecovery: thread.limitRecovery ?? null,
     pinnedAt: nullableIso(thread.pinnedAt ?? null),
     autoSettleDisabledAt: nullableIso(thread.autoSettleDisabledAt ?? null),

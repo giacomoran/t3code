@@ -109,6 +109,7 @@ function threadDetailToShell(
     snoozedUntil: thread.snoozedUntil ?? null,
     snoozedAt: thread.snoozedAt ?? null,
     snoozeUntilSettledThreadIds: thread.snoozeUntilSettledThreadIds ?? null,
+    snoozeUntilSettledLinkedThreads: thread.snoozeUntilSettledLinkedThreads ?? null,
     deletedAt: thread.deletedAt,
   });
 }

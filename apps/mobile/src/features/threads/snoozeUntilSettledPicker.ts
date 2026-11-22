@@ -3,6 +3,7 @@ import type {
   EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/shell";
 import {
+  isSnoozeUntilSettledSelected,
   resolveSnoozeUntilSettledCandidates,
   snoozeCandidateStatus,
   type SnoozeCandidateStatus,
@@ -12,7 +13,8 @@ import { resolveThreadActivityTimestamp } from "@t3tools/client-runtime/state/th
 import {
   isListedThreadLineage,
   type EnvironmentId,
-  type ProjectId,
+  type ScopedProjectRef,
+  type ScopedThreadRef,
   type ThreadId,
 } from "@t3tools/contracts";
 
@@ -47,7 +49,7 @@ export function snoozeUntilSettledCandidateStatus(
 export interface SnoozeUntilSettledPickerRow {
   readonly thread: EnvironmentThreadShell;
   readonly selected: boolean;
-  /** "Project · Working · 5m ago" */
+  /** "Project · Working · 5m ago", led by the machine when there are several. */
   readonly subtitle: string;
 }
 
@@ -55,73 +57,101 @@ export interface SnoozeUntilSettledPicker {
   readonly rows: ReadonlyArray<SnoozeUntilSettledPickerRow>;
   /** The picked threads that are still open, in the order they were picked; confirm sends these. */
   readonly selectedThreads: ReadonlyArray<EnvironmentThreadShell>;
+  /** Machines to filter by, when threads of linked machines are offered too; else empty. */
+  readonly environmentOptions: ReadonlyArray<{
+    readonly environmentId: EnvironmentId;
+    readonly label: string;
+  }>;
   /** Projects that have an open thread to wait on, by title. */
-  readonly projectOptions: ReadonlyArray<{ readonly id: ProjectId; readonly title: string }>;
-  /** "no-candidates" when nothing in the environment is open, "no-matches" when filters hide it all. */
+  readonly projectOptions: ReadonlyArray<{
+    readonly project: ScopedProjectRef;
+    readonly title: string;
+  }>;
+  /** "no-candidates" when nothing offered is open, "no-matches" when filters hide it all. */
   readonly emptyState: "no-candidates" | "no-matches" | null;
 }
 
 export function resolveSnoozeUntilSettledPicker(input: {
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
   readonly projects: ReadonlyArray<EnvironmentProject>;
+  /** The snoozed threads' environment. */
   readonly environmentId: EnvironmentId;
+  /** It and the linked environments whose threads are offered too. */
+  readonly environmentIds: ReadonlyArray<EnvironmentId>;
+  readonly environmentLabelById: ReadonlyMap<EnvironmentId, string>;
   readonly excludeThreadIds: ReadonlyArray<ThreadId>;
-  readonly selectedThreadIds: ReadonlyArray<ThreadId>;
+  readonly selected: ReadonlyArray<ScopedThreadRef>;
   readonly query: string;
-  readonly messageMatchThreadIds: ReadonlySet<ThreadId>;
-  readonly projectId: ProjectId | null;
+  /** `environmentId:threadId` keys of the thread search's message hits. */
+  readonly messageMatchThreadKeys: ReadonlySet<string>;
+  readonly environmentFilter: EnvironmentId | null;
+  readonly project: ScopedProjectRef | null;
   readonly status: SnoozeCandidateStatusFilter;
   readonly nowMs: number;
   readonly resolve?: MessageResolver;
 }): SnoozeUntilSettledPicker {
   const resolve = input.resolve ?? m;
-  const projectTitleById = new Map(
-    input.projects
-      .filter((project) => project.environmentId === input.environmentId)
-      .map((project) => [project.id, project.title]),
+  const showsEnvironments = input.environmentIds.length > 1;
+  const projectKey = (ref: ScopedProjectRef) => `${ref.environmentId}:${ref.projectId}`;
+  const projectTitleByKey = new Map(
+    input.projects.map((project) => [
+      projectKey({ environmentId: project.environmentId, projectId: project.id }),
+      project.title,
+    ]),
   );
+  const projectTitleOf = (thread: EnvironmentThreadShell) =>
+    projectTitleByKey.get(
+      projectKey({ environmentId: thread.environmentId, projectId: thread.projectId }),
+    ) ?? null;
+  const environmentLabelOf = (environmentId: EnvironmentId) =>
+    input.environmentLabelById.get(environmentId) ?? null;
   // Every thread goes in, so the cycle check sees subagent and side-chat threads that wait on
   // the snoozed ones. Rows leave them out: they stay under their parent in the list.
   const listed = (thread: EnvironmentThreadShell) => isListedThreadLineage(thread.lineage);
   const shared = {
     threads: input.threads,
     environmentId: input.environmentId,
+    environmentIds: input.environmentIds,
     excludeThreadIds: input.excludeThreadIds,
     statusOf: snoozeUntilSettledCandidateStatus,
-    projectTitleOf: (thread: EnvironmentThreadShell) =>
-      projectTitleById.get(thread.projectId) ?? null,
+    projectTitleOf,
+    environmentLabelOf: (thread: EnvironmentThreadShell) =>
+      environmentLabelOf(thread.environmentId),
     now: new Date(input.nowMs).toISOString(),
   };
 
-  // Every open thread, unfiltered: what the selection, project menu, and empty state rest on.
+  // Every open thread, unfiltered: what the selection, menus, and empty state rest on.
   const open = resolveSnoozeUntilSettledCandidates({
     ...shared,
-    selectedThreadIds: [],
+    selected: [],
     query: "",
-    projectId: null,
+    environmentFilter: null,
+    project: null,
     status: "all",
   }).filter(listed);
-  const openById = new Map(open.map((thread) => [thread.id, thread]));
-  const selectedThreads = input.selectedThreadIds.flatMap((threadId) => {
-    const thread = openById.get(threadId);
+  const openByKey = new Map(open.map((thread) => [`${thread.environmentId}:${thread.id}`, thread]));
+  const selectedThreads = input.selected.flatMap((ref) => {
+    const thread = openByKey.get(`${ref.environmentId}:${ref.threadId}`);
     return thread === undefined ? [] : [thread];
   });
-  const selected = new Set(selectedThreads.map((thread) => thread.id));
+  const selectedRefs = selectedThreads.map(refOf);
 
   // The list the user sees, with picked matches first.
   const filtered = resolveSnoozeUntilSettledCandidates({
     ...shared,
-    selectedThreadIds: input.selectedThreadIds,
+    selected: input.selected,
     query: input.query,
-    messageMatchThreadIds: input.messageMatchThreadIds,
-    projectId: input.projectId,
+    messageMatchThreadKeys: input.messageMatchThreadKeys,
+    environmentFilter: input.environmentFilter,
+    project: input.project,
     status: input.status,
   }).filter(listed);
   const rows = filtered.map((thread) => ({
     thread,
-    selected: selected.has(thread.id),
+    selected: isSnoozeUntilSettledSelected(selectedRefs, refOf(thread)),
     subtitle: [
-      projectTitleById.get(thread.projectId),
+      showsEnvironments ? environmentLabelOf(thread.environmentId) : null,
+      projectTitleOf(thread),
       resolve(STATUS_LABEL[snoozeUntilSettledCandidateStatus(thread)]),
       resolve(
         msg("{elapsed} ago", {
@@ -133,16 +163,39 @@ export function resolveSnoozeUntilSettledPicker(input: {
         }),
       ),
     ]
-      .filter((part) => part !== undefined)
+      .filter((part) => part !== null)
       .join(" · "),
   }));
 
-  const openProjectIds = new Set(open.map((thread) => thread.projectId));
-  const projectOptions = [...projectTitleById]
-    .filter(([projectId]) => openProjectIds.has(projectId))
-    .map(([id, title]) => ({ id, title }))
-    .sort((left, right) => left.title.localeCompare(right.title));
+  const environmentOptions = showsEnvironments
+    ? input.environmentIds.map((environmentId) => ({
+        environmentId,
+        label: environmentLabelOf(environmentId) ?? environmentId,
+      }))
+    : [];
+  // A project shows once a machine filter allows it; with several machines, it names its own.
+  const projectOptionByKey = new Map<string, SnoozeUntilSettledPicker["projectOptions"][number]>();
+  for (const thread of open) {
+    if (input.environmentFilter !== null && thread.environmentId !== input.environmentFilter) {
+      continue;
+    }
+    const title = projectTitleOf(thread);
+    if (title === null) continue;
+    const project = { environmentId: thread.environmentId, projectId: thread.projectId };
+    const label = environmentLabelOf(thread.environmentId);
+    projectOptionByKey.set(projectKey(project), {
+      project,
+      title: showsEnvironments && label !== null ? `${title} · ${label}` : title,
+    });
+  }
+  const projectOptions = [...projectOptionByKey.values()].sort((left, right) =>
+    left.title.localeCompare(right.title),
+  );
 
   const emptyState = open.length === 0 ? "no-candidates" : rows.length === 0 ? "no-matches" : null;
-  return { rows, selectedThreads, projectOptions, emptyState };
+  return { rows, selectedThreads, environmentOptions, projectOptions, emptyState };
+}
+
+function refOf(thread: EnvironmentThreadShell): ScopedThreadRef {
+  return { environmentId: thread.environmentId, threadId: thread.id };
 }

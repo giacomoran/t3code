@@ -42,6 +42,7 @@ import {
   OrchestrationV2RunStatus,
   OrchestrationV2TurnItemStatus,
 } from "./orchestrationV2.ts";
+import { ScopedThreadRef } from "./environment.ts";
 import { ProviderOptionSelection, ProviderOptionSelectionValue } from "./model.ts";
 import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 
@@ -420,6 +421,8 @@ export const OrchestratorMcpThreadListItem = Schema.Struct({
   snoozedUntil: Schema.NullOr(IsoDateTime),
   /** Threads the snooze waits on to settle; absent for a time snooze and from older environments. */
   snoozeUntilSettledThreadIds: Schema.optional(Schema.Array(ThreadId)),
+  /** Threads in linked environments the snooze waits on; absent when there are none. */
+  snoozeUntilSettledLinkedThreads: Schema.optional(Schema.Array(ScopedThreadRef)),
   /** Absent from linked environments that predate it. */
   pinned: Schema.optional(Schema.Boolean),
   /** Absent from linked environments that predate it. */
@@ -500,6 +503,8 @@ export const OrchestratorMcpThreadDetail = Schema.Struct({
   snoozedUntil: Schema.NullOr(IsoDateTime),
   /** Threads the snooze waits on to settle; absent for a time snooze and from older environments. */
   snoozeUntilSettledThreadIds: Schema.optional(Schema.Array(ThreadId)),
+  /** Threads in linked environments the snooze waits on; absent when there are none. */
+  snoozeUntilSettledLinkedThreads: Schema.optional(Schema.Array(ScopedThreadRef)),
   /** Absent from linked environments that predate it. */
   pinned: Schema.optional(Schema.Boolean),
   /** Absent from linked environments that predate it. */

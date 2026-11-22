@@ -3,12 +3,15 @@ import type { ThreadSnoozeShell } from "@t3tools/client-runtime/state/thread-set
 import {
   isSnoozeDependencyDone,
   presentThreadSnoozeUntilSettled,
+  snoozeDependencyLookup,
   snoozedUntilSettledLabel,
+  snoozeUntilSettledLists,
 } from "@t3tools/client-runtime/state/thread-snooze-until-settled";
 import {
   THREAD_SNOOZE_UNTIL_SETTLED_CAP_MS,
-  type ProjectId,
-  type ThreadId,
+  type EnvironmentId,
+  type ScopedProjectRef,
+  type ScopedThreadRef,
 } from "@t3tools/contracts";
 import { msg } from "gt-react";
 
@@ -18,13 +21,14 @@ import type { SnoozeChoice } from "./Sidebar.snooze";
 
 /** The wait on threads still wakes at the cap, in case they never settle. */
 export function snoozeUntilSettledChoice(
-  threadIds: ReadonlyArray<ThreadId>,
+  environmentId: EnvironmentId,
+  picks: ReadonlyArray<ScopedThreadRef>,
   now: Date,
 ): SnoozeChoice {
-  if (threadIds.length === 0) throw new Error("Snoozing until threads settle needs a thread");
+  if (picks.length === 0) throw new Error("Snoozing until threads settle needs a thread");
   return {
     snoozedUntil: new Date(now.getTime() + THREAD_SNOOZE_UNTIL_SETTLED_CAP_MS).toISOString(),
-    untilSettledThreadIds: threadIds,
+    ...snoozeUntilSettledLists(environmentId, picks),
   };
 }
 
@@ -59,57 +63,61 @@ export function resolveSnoozeUntilSettledKey(input: {
   return null;
 }
 
-/** The highlighted row: the one the user moved to while it is still listed, else the first. */
-export function resolveHighlightedThreadId(
-  threadIds: ReadonlyArray<ThreadId>,
-  highlightedThreadId: ThreadId | null,
-): ThreadId | null {
-  if (highlightedThreadId !== null && threadIds.includes(highlightedThreadId)) {
-    return highlightedThreadId;
+/** The highlighted row's key: the one the user moved to while still listed, else the first. */
+export function resolveHighlightedThreadKey(
+  threadKeys: ReadonlyArray<string>,
+  highlightedThreadKey: string | null,
+): string | null {
+  if (highlightedThreadKey !== null && threadKeys.includes(highlightedThreadKey)) {
+    return highlightedThreadKey;
   }
-  return threadIds[0] ?? null;
+  return threadKeys[0] ?? null;
 }
 
 /** Moves the highlight one row, stopping at either end of the list. */
-export function moveHighlightedThreadId(
-  threadIds: ReadonlyArray<ThreadId>,
-  highlightedThreadId: ThreadId | null,
+export function moveHighlightedThreadKey(
+  threadKeys: ReadonlyArray<string>,
+  highlightedThreadKey: string | null,
   direction: "up" | "down",
-): ThreadId | null {
-  if (threadIds.length === 0) return null;
-  const index = highlightedThreadId === null ? -1 : threadIds.indexOf(highlightedThreadId);
-  if (index === -1) return threadIds[0]!;
+): string | null {
+  if (threadKeys.length === 0) return null;
+  const index = highlightedThreadKey === null ? -1 : threadKeys.indexOf(highlightedThreadKey);
+  if (index === -1) return threadKeys[0]!;
   const nextIndex =
-    direction === "down" ? Math.min(index + 1, threadIds.length - 1) : Math.max(index - 1, 0);
-  return threadIds[nextIndex]!;
+    direction === "down" ? Math.min(index + 1, threadKeys.length - 1) : Math.max(index - 1, 0);
+  return threadKeys[nextIndex]!;
 }
 
 interface SnoozeUntilSettledProjectOption {
-  readonly projectId: ProjectId;
+  readonly project: ScopedProjectRef;
   readonly title: string;
 }
 
 /** The projects the picker's filter offers: those of the threads it can list, by title. */
 export function snoozeUntilSettledProjectOptions<
-  T extends Pick<EnvironmentThreadShell, "projectId">,
+  T extends Pick<EnvironmentThreadShell, "environmentId" | "projectId">,
 >(
   threads: ReadonlyArray<T>,
   projectTitleOf: (thread: T) => string | null,
 ): ReadonlyArray<SnoozeUntilSettledProjectOption> {
-  const titleByProjectId = new Map<ProjectId, string>();
+  const optionByKey = new Map<string, SnoozeUntilSettledProjectOption>();
   for (const thread of threads) {
     const title = projectTitleOf(thread);
-    if (title !== null) titleByProjectId.set(thread.projectId, title);
+    if (title === null) continue;
+    optionByKey.set(`${thread.environmentId}:${thread.projectId}`, {
+      project: { environmentId: thread.environmentId, projectId: thread.projectId },
+      title,
+    });
   }
-  return [...titleByProjectId]
-    .map(([projectId, title]) => ({ projectId, title }))
-    .toSorted((left, right) => left.title.localeCompare(right.title));
+  return [...optionByKey.values()].toSorted((left, right) => left.title.localeCompare(right.title));
 }
 
 interface SnoozeWaitingOnThread {
-  readonly threadId: ThreadId;
+  readonly ref: ScopedThreadRef;
   readonly title: string;
   readonly isSettled: boolean;
+  /** In a linked environment rather than the snoozed thread's own. */
+  readonly isLinked: boolean;
 }
 
 export interface SnoozeUntilSettledState {
@@ -124,45 +132,59 @@ export interface SnoozeUntilSettledState {
 }
 
 /**
- * How a thread's wait on other threads reads, or null for a time snooze. `shells` holds the
- * shells to look the listed threads up in; ones it lacks count as settled, as on the server.
+ * How a thread's wait on other threads reads, or null for a time snooze. `shells` holds what the
+ * client has of the listed threads: a missing one counts as settled where its environment's
+ * threads are loaded, as on the server, and as open elsewhere.
  */
 export function presentSnoozeUntilSettled(
   thread: ThreadSnoozeShell &
-    Pick<EnvironmentThreadShell, "environmentId" | "snoozeUntilSettledThreadIds">,
+    Pick<
+      EnvironmentThreadShell,
+      "environmentId" | "snoozeUntilSettledThreadIds" | "snoozeUntilSettledLinkedThreads"
+    >,
   options: {
     readonly now: string;
-    readonly shells: ReadonlyArray<
-      Pick<
-        EnvironmentThreadShell,
-        "id" | "environmentId" | "title" | "settledOverride" | "settledAt" | "archivedAt"
-      >
-    >;
+    readonly shells: {
+      readonly shells: ReadonlyArray<
+        Pick<
+          EnvironmentThreadShell,
+          "id" | "environmentId" | "title" | "settledOverride" | "settledAt" | "archivedAt"
+        >
+      >;
+      readonly loadedEnvironmentIds: ReadonlySet<EnvironmentId>;
+    };
     readonly resolve?: MessageResolver;
   },
 ): SnoozeUntilSettledState | null {
-  if ((thread.snoozeUntilSettledThreadIds ?? []).length === 0) return null;
-  const shellById = new Map(
-    options.shells
-      .filter((shell) => shell.environmentId === thread.environmentId)
-      .map((shell) => [shell.id, shell] as const),
+  if (
+    (thread.snoozeUntilSettledThreadIds ?? []).length === 0 &&
+    (thread.snoozeUntilSettledLinkedThreads ?? []).length === 0
+  ) {
+    return null;
+  }
+  const shellByKey = new Map(
+    options.shells.shells.map((shell) => [`${shell.environmentId}:${shell.id}`, shell] as const),
   );
   const presentation = presentThreadSnoozeUntilSettled(thread, {
     now: options.now,
-    threadById: (threadId) => shellById.get(threadId),
+    dependencyOf: snoozeDependencyLookup(
+      options.shells.shells,
+      options.shells.loadedEnvironmentIds,
+    ),
     resolve: options.resolve ?? m,
   });
   return {
-    threadCount: presentation.threadIds.length,
+    threadCount: presentation.dependencies.length,
     waitingCount: presentation.waitingCount,
-    waitingOn: presentation.threadIds.flatMap((threadId) => {
-      const shell = shellById.get(threadId);
+    waitingOn: presentation.dependencies.flatMap((ref) => {
+      const shell = shellByKey.get(`${ref.environmentId}:${ref.threadId}`);
       if (shell === undefined) return [];
       return [
         {
-          threadId,
+          ref,
           title: shell.title,
           isSettled: isSnoozeDependencyDone(shell),
+          isLinked: ref.environmentId !== thread.environmentId,
         },
       ];
     }),

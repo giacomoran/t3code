@@ -31,12 +31,14 @@ import {
   AuthOrchestrationOperateScope,
   type EnvironmentId,
   type EnvironmentMachineKind,
-  type ThreadId,
 } from "@t3tools/contracts";
 import { toServerClock } from "@t3tools/client-runtime/clock";
 import type { SnoozePresetSetting } from "@t3tools/contracts/settings";
 import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
-import { snoozedUntilSettledLabel } from "@t3tools/client-runtime/state/thread-snooze-until-settled";
+import {
+  snoozedUntilSettledLabel,
+  type SnoozeUntilSettledLists,
+} from "@t3tools/client-runtime/state/thread-snooze-until-settled";
 import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import type { MenuAction } from "@react-native-menu/menu";
 import { useNavigation } from "@react-navigation/native";
@@ -785,7 +787,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly onSnoozeThread: (
     thread: EnvironmentThreadShell,
     snoozedUntil: string,
-    untilSettledThreadIds?: ReadonlyArray<ThreadId>,
+    untilSettled?: SnoozeUntilSettledLists,
   ) => void;
   readonly onUnsnoozeThread: (thread: EnvironmentThreadShell) => void;
   readonly onUnsettleThread: (thread: EnvironmentThreadShell) => void;
@@ -987,7 +989,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       environmentId: thread.environmentId,
       excludeThreadIds: [thread.id],
     }).then((choice) => {
-      if (choice !== null) onSnoozeThread(thread, choice.snoozedUntil, choice.threadIds);
+      if (choice !== null) onSnoozeThread(thread, choice.snoozedUntil, choice.untilSettled);
     });
   }, [onSnoozeThread, thread]);
   const handleUnsnooze = useCallback(() => onUnsnoozeThread(thread), [onUnsnoozeThread, thread]);

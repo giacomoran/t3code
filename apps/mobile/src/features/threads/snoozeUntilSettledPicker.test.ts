@@ -9,14 +9,19 @@ import { makeThreadShellFixture } from "../../test-fixtures";
 import { resolveSnoozeUntilSettledPicker } from "./snoozeUntilSettledPicker";
 
 const environmentId = EnvironmentId.make("environment");
+const boxEnvironmentId = EnvironmentId.make("box");
 const appProjectId = ProjectId.make("app");
 const docsProjectId = ProjectId.make("docs");
 const emptyProjectId = ProjectId.make("empty");
 const NOW_MS = Date.parse("2026-06-02T12:00:00.000Z");
 
-function makeProject(id: ProjectId, title: string): EnvironmentProject {
+function makeProject(
+  id: ProjectId,
+  title: string,
+  projectEnvironmentId = environmentId,
+): EnvironmentProject {
   return {
-    environmentId,
+    environmentId: projectEnvironmentId,
     id,
     title,
     workspaceRoot: `/work/${id}`,
@@ -68,11 +73,14 @@ const threads = [
     },
   }),
   makeThread("elsewhere", { environmentId: EnvironmentId.make("other") }),
+  makeThread("on-box", { environmentId: boxEnvironmentId }),
 ];
 const projects = [
   makeProject(docsProjectId, "Docs"),
   makeProject(appProjectId, "App"),
   makeProject(emptyProjectId, "Empty"),
+  // The same project id on the linked machine is its own project.
+  makeProject(appProjectId, "App", boxEnvironmentId),
 ];
 
 function pick(input: Partial<Parameters<typeof resolveSnoozeUntilSettledPicker>[0]> = {}) {
@@ -80,11 +88,17 @@ function pick(input: Partial<Parameters<typeof resolveSnoozeUntilSettledPicker>[
     threads,
     projects,
     environmentId,
+    environmentIds: [environmentId],
+    environmentLabelById: new Map([
+      [environmentId, "Mac"],
+      [boxEnvironmentId, "Box"],
+    ]),
     excludeThreadIds: [ThreadId.make("snoozing")],
-    selectedThreadIds: [],
+    selected: [],
     query: "",
-    messageMatchThreadIds: new Set(),
-    projectId: null,
+    messageMatchThreadKeys: new Set(),
+    environmentFilter: null,
+    project: null,
     status: "all",
     nowMs: NOW_MS,
     ...input,
@@ -92,6 +106,10 @@ function pick(input: Partial<Parameters<typeof resolveSnoozeUntilSettledPicker>[
 }
 
 const ids = (picker: ReturnType<typeof pick>) => picker.rows.map((row) => row.thread.id);
+const ref = (threadId: string, threadEnvironmentId = environmentId) => ({
+  environmentId: threadEnvironmentId,
+  threadId: ThreadId.make(threadId),
+});
 
 describe("resolveSnoozeUntilSettledPicker", () => {
   it("lists the environment's open listed threads, working first, with their project and status", () => {
@@ -104,35 +122,70 @@ describe("resolveSnoozeUntilSettledPicker", () => {
       "App · Needs attention · 1h ago",
     ]);
     expect(picker.projectOptions).toEqual([
-      { id: appProjectId, title: "App" },
-      { id: docsProjectId, title: "Docs" },
+      { project: { environmentId, projectId: appProjectId }, title: "App" },
+      { project: { environmentId, projectId: docsProjectId }, title: "Docs" },
     ]);
+    expect(picker.environmentOptions).toEqual([]);
     expect(picker.emptyState).toBeNull();
   });
 
+  it("offers linked machines' threads, named by machine, with a machine filter", () => {
+    const picker = pick({ environmentIds: [environmentId, boxEnvironmentId] });
+
+    expect(ids(picker)).toEqual(["working-docs", "idle-app", "asking", "on-box"]);
+    expect(picker.rows.at(-1)?.subtitle).toBe("Box · App · Idle · 1h ago");
+    expect(picker.environmentOptions).toEqual([
+      { environmentId, label: "Mac" },
+      { environmentId: boxEnvironmentId, label: "Box" },
+    ]);
+    expect(picker.projectOptions.map((option) => option.title)).toEqual([
+      "App · Box",
+      "App · Mac",
+      "Docs · Mac",
+    ]);
+    expect(
+      ids(
+        pick({
+          environmentIds: [environmentId, boxEnvironmentId],
+          environmentFilter: boxEnvironmentId,
+        }),
+      ),
+    ).toEqual(["on-box"]);
+    expect(
+      ids(
+        pick({
+          environmentIds: [environmentId, boxEnvironmentId],
+          project: { environmentId: boxEnvironmentId, projectId: appProjectId },
+        }),
+      ),
+    ).toEqual(["on-box"]);
+  });
+
   it("filters by project, status, title, and message hits", () => {
-    expect(ids(pick({ projectId: appProjectId }))).toEqual(["idle-app", "asking"]);
+    expect(ids(pick({ project: { environmentId, projectId: appProjectId } }))).toEqual([
+      "idle-app",
+      "asking",
+    ]);
     expect(ids(pick({ status: "attention" }))).toEqual(["asking"]);
     expect(ids(pick({ status: "idle" }))).toEqual(["idle-app"]);
     expect(ids(pick({ query: "docs" }))).toEqual(["working-docs"]);
     expect(
-      ids(pick({ query: "migration", messageMatchThreadIds: new Set([ThreadId.make("asking")]) })),
+      ids(
+        pick({ query: "migration", messageMatchThreadKeys: new Set([`${environmentId}:asking`]) }),
+      ),
     ).toEqual(["asking"]);
   });
 
   it("keeps picks that a filter hides, and drops picks that settled meanwhile", () => {
     const picker = pick({
       status: "working",
-      selectedThreadIds: [ThreadId.make("asking"), ThreadId.make("settled")],
+      selected: [ref("asking"), ref("settled")],
     });
 
     expect(ids(picker)).toEqual(["working-docs"]);
     expect(picker.selectedThreads.map((thread) => thread.id)).toEqual(["asking"]);
     expect(
-      pick({ selectedThreadIds: [ThreadId.make("asking")] }).rows.map((row) => [
-        row.thread.id,
-        row.selected,
-      ]),
+      pick({ selected: [ref("asking")] }).rows.map((row) => [row.thread.id, row.selected]),
     ).toEqual([
       ["asking", true],
       ["working-docs", false],

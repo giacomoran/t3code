@@ -2311,7 +2311,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     snoozingThreadKeysRef.current.add(threadKey);
     const navigateAfterSnooze = planForwardNavigation(threadKey, opts.coSnoozingKeys);
     if (navigateAfterSnooze) departRouteThread(threadKey);
-    const result = await snoozeThread(threadRef, preset.snoozedUntil, preset.untilSettledThreadIds);
+    const result = await snoozeThread(threadRef, preset.snoozedUntil, preset);
     snoozingThreadKeysRef.current.delete(threadKey);
     if (result._tag === "Failure") {
       stayOnRouteThread(threadKey);

@@ -1,7 +1,8 @@
 import {
   THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS,
   type EnvironmentId,
-  type ProjectId,
+  type ScopedProjectRef,
+  type ScopedThreadRef,
   type ThreadId,
 } from "@t3tools/contracts";
 import { foldSearchQuery, scoreThreadSearch } from "@t3tools/shared/paletteSearch";
@@ -44,9 +45,55 @@ export function snoozeUntilSettledActionLabel(
   );
 }
 
+type SnoozeWaitingShell = Pick<
+  EnvironmentThreadShell,
+  "environmentId" | "snoozeUntilSettledThreadIds" | "snoozeUntilSettledLinkedThreads"
+>;
+
+/** The threads a snooze waits on, in its own environment first and then in linked ones. */
+export function snoozeUntilSettledDependencies(
+  shell: SnoozeWaitingShell,
+): ReadonlyArray<ScopedThreadRef> {
+  return [
+    ...(shell.snoozeUntilSettledThreadIds ?? []).map((threadId) => ({
+      environmentId: shell.environmentId,
+      threadId,
+    })),
+    ...(shell.snoozeUntilSettledLinkedThreads ?? []),
+  ];
+}
+
+/** The threads a snooze waits on, as `thread.snooze` takes them; both absent for a time snooze. */
+export interface SnoozeUntilSettledLists {
+  readonly untilSettledThreadIds?: ReadonlyArray<ThreadId>;
+  readonly untilSettledLinkedThreads?: ReadonlyArray<ScopedThreadRef>;
+}
+
+/** How many threads the lists name together. */
+export function snoozeUntilSettledCount(lists: SnoozeUntilSettledLists): number {
+  return (
+    (lists.untilSettledThreadIds?.length ?? 0) + (lists.untilSettledLinkedThreads?.length ?? 0)
+  );
+}
+
+/** Splits picks into the snooze command's lists: this environment's, and linked ones. */
+export function snoozeUntilSettledLists(
+  environmentId: EnvironmentId,
+  picks: ReadonlyArray<ScopedThreadRef>,
+): SnoozeUntilSettledLists {
+  const threadIds = picks
+    .filter((ref) => ref.environmentId === environmentId)
+    .map((ref) => ref.threadId);
+  const linkedThreads = picks.filter((ref) => ref.environmentId !== environmentId);
+  return {
+    ...(threadIds.length === 0 ? {} : { untilSettledThreadIds: threadIds }),
+    ...(linkedThreads.length === 0 ? {} : { untilSettledLinkedThreads: linkedThreads }),
+  };
+}
+
 export interface ThreadSnoozeUntilSettledPresentation {
   /** The threads the snooze waits on; empty for a time snooze. */
-  readonly threadIds: ReadonlyArray<ThreadId>;
+  readonly dependencies: ReadonlyArray<ScopedThreadRef>;
   /** How many threads the snooze still waits on while snoozed; shown instead of the wake time. */
   readonly waitingCount: number | null;
   /** "Threads settled" when the thread woke because they all settled. */
@@ -59,20 +106,41 @@ type SnoozeDependencyShell = Pick<
 >;
 
 /**
- * Whether a thread a snooze waits on no longer holds it: settled or archived. Pass the client's
- * shell for the id: deleted threads have none, and archived or older settled ones may have none
- * loaded, so a missing shell counts as done, as on the server.
+ * A thread a snooze waits on as the client holds it: its shell; undefined when the client has
+ * its environment's threads but no shell for it (deleted, or archived or older settled ones not
+ * loaded); or "unknown-environment" when the client has no threads from its environment.
  */
-export function isSnoozeDependencyDone(thread: SnoozeDependencyShell | undefined): boolean {
+export type SnoozeDependency = SnoozeDependencyShell | undefined | "unknown-environment";
+
+/**
+ * Whether a thread a snooze waits on no longer holds it: settled or archived. A missing shell
+ * counts as done, as on the server; a thread in an environment the client cannot see never does.
+ */
+export function isSnoozeDependencyDone(thread: SnoozeDependency): boolean {
+  if (thread === "unknown-environment") return false;
   return thread === undefined || thread.settledOverride === "settled" || thread.archivedAt !== null;
+}
+
+/** Looks a listed thread up in the client's shells; see `SnoozeDependency`. */
+export function snoozeDependencyLookup(
+  shells: ReadonlyArray<
+    SnoozeDependencyShell & Pick<EnvironmentThreadShell, "id" | "environmentId">
+  >,
+  loadedEnvironmentIds: ReadonlySet<EnvironmentId>,
+): (ref: ScopedThreadRef) => SnoozeDependency {
+  const shellByKey = new Map(
+    shells.map((shell) => [`${shell.environmentId}:${shell.id}`, shell] as const),
+  );
+  return (ref) => {
+    if (!loadedEnvironmentIds.has(ref.environmentId)) return "unknown-environment";
+    return shellByKey.get(`${ref.environmentId}:${ref.threadId}`);
+  };
 }
 
 // Done by the wake: the server's wake sets `snoozedUntil` to when the last thread finished, so a
 // thread that finished only after a cap wake does not explain it.
-function isSnoozeDependencyDoneBy(
-  thread: SnoozeDependencyShell | undefined,
-  atMs: number,
-): boolean {
+function isSnoozeDependencyDoneBy(thread: SnoozeDependency, atMs: number): boolean {
+  if (thread === "unknown-environment") return false;
   if (thread === undefined) return true;
   const finishedAt = [
     thread.settledOverride === "settled" ? thread.settledAt : null,
@@ -82,22 +150,22 @@ function isSnoozeDependencyDoneBy(
 }
 
 /**
- * How a thread's "until threads settle" snooze reads; `threadById` gives the client's shell for
- * a listed id (see `isSnoozeDependencyDone`). A wake on a request or failure, or at the 30-day
+ * How a thread's "until threads settle" snooze reads; `dependencyOf` gives the client's view of
+ * a listed thread (see `SnoozeDependency`). A wake on a request or failure, or at the 30-day
  * cap, gets no woke label.
  */
 export function presentThreadSnoozeUntilSettled(
-  shell: ThreadSnoozeShell & Pick<EnvironmentThreadShell, "snoozeUntilSettledThreadIds">,
+  shell: ThreadSnoozeShell & SnoozeWaitingShell,
   options: {
     readonly now: string;
-    readonly threadById: (threadId: ThreadId) => SnoozeDependencyShell | undefined;
+    readonly dependencyOf: (ref: ScopedThreadRef) => SnoozeDependency;
     readonly resolve?: MFunctionType;
   },
 ): ThreadSnoozeUntilSettledPresentation {
-  const threadIds = shell.snoozeUntilSettledThreadIds ?? [];
-  if (threadIds.length === 0) return { threadIds, waitingCount: null, wokeLabel: null };
+  const dependencies = snoozeUntilSettledDependencies(shell);
+  if (dependencies.length === 0) return { dependencies, waitingCount: null, wokeLabel: null };
   if (effectiveSnoozed(shell, options)) {
-    return { threadIds, waitingCount: threadIds.length, wokeLabel: null };
+    return { dependencies, waitingCount: dependencies.length, wokeLabel: null };
   }
 
   // Woke: only an expired snooze whose threads had all finished by then woke because of them.
@@ -107,14 +175,14 @@ export function presentThreadSnoozeUntilSettled(
     threadWokeAt(shell, options) === null ||
     threadRaisedHandWhileSnoozed(shell)
   ) {
-    return { threadIds, waitingCount: null, wokeLabel: null };
+    return { dependencies, waitingCount: null, wokeLabel: null };
   }
   const wakeAtMs = Date.parse(snoozedUntil);
-  const wokeOnThreadsSettled = threadIds.every((threadId) =>
-    isSnoozeDependencyDoneBy(options.threadById(threadId), wakeAtMs),
+  const wokeOnThreadsSettled = dependencies.every((ref) =>
+    isSnoozeDependencyDoneBy(options.dependencyOf(ref), wakeAtMs),
   );
   return {
-    threadIds,
+    dependencies,
     waitingCount: null,
     wokeLabel: wokeOnThreadsSettled
       ? (options.resolve ?? mFallback)(
@@ -124,16 +192,28 @@ export function presentThreadSnoozeUntilSettled(
   };
 }
 
+function isSameThread(left: ScopedThreadRef, right: ScopedThreadRef): boolean {
+  return left.environmentId === right.environmentId && left.threadId === right.threadId;
+}
+
+/** Whether `ref` is among the picks. */
+export function isSnoozeUntilSettledSelected(
+  selected: ReadonlyArray<ScopedThreadRef>,
+  ref: ScopedThreadRef,
+): boolean {
+  return selected.some((candidate) => isSameThread(candidate, ref));
+}
+
 /** Picks or unpicks a thread in the picker; a pick past the server's limit is left out. */
 export function toggleSnoozeUntilSettledSelection(
-  selectedThreadIds: ReadonlyArray<ThreadId>,
-  threadId: ThreadId,
-): ReadonlyArray<ThreadId> {
-  if (selectedThreadIds.includes(threadId)) {
-    return selectedThreadIds.filter((candidate) => candidate !== threadId);
+  selected: ReadonlyArray<ScopedThreadRef>,
+  ref: ScopedThreadRef,
+): ReadonlyArray<ScopedThreadRef> {
+  if (isSnoozeUntilSettledSelected(selected, ref)) {
+    return selected.filter((candidate) => !isSameThread(candidate, ref));
   }
-  if (selectedThreadIds.length >= THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS) return selectedThreadIds;
-  return [...selectedThreadIds, threadId];
+  if (selected.length >= THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS) return selected;
+  return [...selected, ref];
 }
 
 /** Shown once the picks reach the limit. */
@@ -185,53 +265,70 @@ export type SnoozeCandidateThread = ThreadSearchShell &
   >;
 
 export interface SnoozeUntilSettledCandidatesInput<T extends SnoozeCandidateThread> {
-  /** The thread shells the client has; only `environmentId`'s are candidates. */
+  /** The thread shells the client has; only those in `environmentIds` are candidates. */
   readonly threads: ReadonlyArray<T>;
+  /** The snoozed threads' environment. */
   readonly environmentId: EnvironmentId;
-  /** The threads being snoozed. */
+  /** It and the environments it links to that this client also reaches. */
+  readonly environmentIds: ReadonlyArray<EnvironmentId>;
+  /** The threads being snoozed, in `environmentId`. */
   readonly excludeThreadIds: ReadonlyArray<ThreadId>;
-  readonly selectedThreadIds: ReadonlyArray<ThreadId>;
-  /** Matched against title and project name, like the sidebar filter. */
+  readonly selected: ReadonlyArray<ScopedThreadRef>;
+  /** Matched against title, project name, and environment label, like the sidebar filter. */
   readonly query: string;
-  /** Threads whose messages match `query`, from the thread search; they match too. */
-  readonly messageMatchThreadIds?: ReadonlySet<ThreadId>;
+  /** `environmentId:threadId` keys of threads whose messages match `query`; they match too. */
+  readonly messageMatchThreadKeys?: ReadonlySet<string>;
+  /** null for every environment. */
+  readonly environmentFilter: EnvironmentId | null;
   /** null for every project. */
-  readonly projectId: ProjectId | null;
+  readonly project: ScopedProjectRef | null;
   readonly status: SnoozeCandidateStatusFilter;
   /** Map the surface's row status with `snoozeCandidateStatus`. */
   readonly statusOf: (thread: T) => SnoozeCandidateStatus;
   readonly projectTitleOf: (thread: T) => string | null;
+  readonly environmentLabelOf: (thread: T) => string | null;
   readonly now: string;
 }
 
 /**
- * The threads "Snooze until threads settle" can wait on, filtered and in display order: open
- * (not settled or archived) threads of the environment other than the snoozed ones and the ones
- * already waiting on them (the server rejects that cycle), matching the query, project, and status. Selected matches come first, then working threads, then the
- * most recently updated.
+ * The threads "Snooze until threads settle" can wait on, in display order: open threads of the
+ * offered environments, minus the snoozed ones and those here already waiting on them (a cycle
+ * the server rejects), matching the filters. Selected matches lead, then working threads, then
+ * the most recently updated.
  */
 export function resolveSnoozeUntilSettledCandidates<T extends SnoozeCandidateThread>(
   input: SnoozeUntilSettledCandidatesInput<T>,
 ): T[] {
   const excluded = waitingOnThreads(input);
-  const selected = new Set(input.selectedThreadIds);
+  const environmentIds = new Set(input.environmentIds);
   const query = foldSearchQuery(input.query);
+  const refOf = (thread: T) => ({ environmentId: thread.environmentId, threadId: thread.id });
 
   // Only whether a thread matches counts here, so the score's clock does not matter.
   const matchesQuery = (thread: T) =>
     query === "" ||
-    input.messageMatchThreadIds?.has(thread.id) === true ||
-    scoreThreadSearch(query, threadSearchSubject(thread, input.projectTitleOf(thread)), 0, {
-      picks: false,
-    }) !== null;
+    input.messageMatchThreadKeys?.has(`${thread.environmentId}:${thread.id}`) === true ||
+    scoreThreadSearch(
+      query,
+      threadSearchSubject(
+        thread,
+        input.projectTitleOf(thread),
+        environmentIds.size > 1 ? input.environmentLabelOf(thread) : null,
+      ),
+      0,
+      { picks: false },
+    ) !== null;
 
   const candidates = input.threads.filter(
     (thread) =>
-      thread.environmentId === input.environmentId &&
+      environmentIds.has(thread.environmentId) &&
       thread.archivedAt === null &&
       thread.settledOverride !== "settled" &&
-      !excluded.has(thread.id) &&
-      (input.projectId === null || thread.projectId === input.projectId) &&
+      !(thread.environmentId === input.environmentId && excluded.has(thread.id)) &&
+      (input.environmentFilter === null || thread.environmentId === input.environmentFilter) &&
+      (input.project === null ||
+        (thread.environmentId === input.project.environmentId &&
+          thread.projectId === input.project.projectId)) &&
       (input.status === "all" || input.statusOf(thread) === input.status) &&
       matchesQuery(thread),
   );
@@ -241,7 +338,7 @@ export function resolveSnoozeUntilSettledCandidates<T extends SnoozeCandidateThr
     candidates.map((thread) => [
       thread,
       {
-        selected: selected.has(thread.id) ? 0 : 1,
+        selected: isSnoozeUntilSettledSelected(input.selected, refOf(thread)) ? 0 : 1,
         working: input.statusOf(thread) === "working" ? 0 : 1,
         updatedAt: toSortableTimestamp(thread.updatedAt) ?? 0,
       },

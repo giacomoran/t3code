@@ -236,7 +236,10 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
       ? threadWokeAt(activeThreadShell, { now: snoozeClock })
       : null;
   const snoozeUntilSettledShells = useSnoozeUntilSettledShells(
-    (activeThreadShell?.snoozeUntilSettledThreadIds ?? []).length > 0 ? activeThreadRef : null,
+    (activeThreadShell?.snoozeUntilSettledThreadIds ?? []).length > 0 ||
+      (activeThreadShell?.snoozeUntilSettledLinkedThreads ?? []).length > 0
+      ? activeThreadRef
+      : null,
   );
   const activeThreadSnoozeUntilSettled =
     activeThreadShell === null

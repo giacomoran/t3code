@@ -7,8 +7,11 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  isSnoozeDependencyDone,
   presentThreadSnoozeUntilSettled,
   resolveSnoozeUntilSettledCandidates,
+  snoozeDependencyLookup,
+  snoozeUntilSettledLists,
   snoozeCandidateStatus,
   snoozedUntilSettledLabel,
   toggleSnoozeUntilSettledSelection,
@@ -22,16 +25,22 @@ const SNOOZED_AT = "2026-11-18T12:00:00.000Z";
 const CAP = "2026-12-18T12:00:00.000Z";
 const first = ThreadId.make("thread-first");
 const second = ThreadId.make("thread-second");
+const here = EnvironmentId.make("environment-here");
+const box = EnvironmentId.make("environment-box");
+const onBox = { environmentId: box, threadId: ThreadId.make("thread-on-box") };
 
 describe("presentThreadSnoozeUntilSettled", () => {
   const shell = (input: {
     readonly snoozedUntil: string;
     readonly threadIds: ReadonlyArray<ThreadId> | null;
+    readonly linkedThreads?: ReadonlyArray<typeof onBox>;
     readonly pendingApproval?: boolean;
   }) => ({
+    environmentId: here,
     snoozedUntil: input.snoozedUntil,
     snoozedAt: SNOOZED_AT,
     snoozeUntilSettledThreadIds: input.threadIds,
+    snoozeUntilSettledLinkedThreads: input.linkedThreads ?? null,
     hasPendingApprovals: input.pendingApproval === true,
     hasPendingUserInput: false,
   });
@@ -47,6 +56,25 @@ describe("presentThreadSnoozeUntilSettled", () => {
       shell: shell({ snoozedUntil: CAP, threadIds: [first, second] }),
       threadById: () => open,
       expected: { waitingCount: 2, wokeLabel: null },
+    },
+    {
+      name: "counts linked threads with the ones here",
+      shell: shell({ snoozedUntil: CAP, threadIds: [first, second], linkedThreads: [onBox] }),
+      threadById: () => open,
+      expected: { waitingCount: 3, wokeLabel: null },
+    },
+    {
+      name: "says why it woke once linked threads settled too",
+      shell: shell({ snoozedUntil: NOW, threadIds: null, linkedThreads: [onBox] }),
+      threadById: () => settled,
+      expected: { waitingCount: null, wokeLabel: "Threads settled" },
+    },
+    {
+      name: "gives a wake no reason while a linked thread's environment is unknown",
+      shell: shell({ snoozedUntil: NOW, threadIds: [first], linkedThreads: [onBox] }),
+      threadById: (threadId: ThreadId) =>
+        threadId === first ? settled : ("unknown-environment" as const),
+      expected: { waitingCount: null, wokeLabel: null },
     },
     {
       name: "says why it woke once they all settled or went away",
@@ -92,9 +120,34 @@ describe("presentThreadSnoozeUntilSettled", () => {
       expected: { waitingCount: null, wokeLabel: null },
     },
   ])("$name", ({ shell, threadById, expected }) => {
-    expect(presentThreadSnoozeUntilSettled(shell, { now: NOW, threadById })).toMatchObject(
-      expected,
+    expect(
+      presentThreadSnoozeUntilSettled(shell, {
+        now: NOW,
+        dependencyOf: (ref) => threadById(ref.threadId),
+      }),
+    ).toMatchObject(expected);
+  });
+
+  it("counts a missing shell as done only where the client has the environment's threads", () => {
+    const dependencyOf = snoozeDependencyLookup(
+      [{ environmentId: here, id: first, ...open }],
+      new Set([here]),
     );
+    expect(isSnoozeDependencyDone(dependencyOf({ environmentId: here, threadId: first }))).toBe(
+      false,
+    );
+    expect(isSnoozeDependencyDone(dependencyOf({ environmentId: here, threadId: second }))).toBe(
+      true,
+    );
+    expect(dependencyOf(onBox)).toBe("unknown-environment");
+    expect(isSnoozeDependencyDone(dependencyOf(onBox))).toBe(false);
+  });
+
+  it("sends picks here and in linked environments in their own lists", () => {
+    expect(
+      snoozeUntilSettledLists(here, [{ environmentId: here, threadId: first }, onBox]),
+    ).toEqual({ untilSettledThreadIds: [first], untilSettledLinkedThreads: [onBox] });
+    expect(snoozeUntilSettledLists(here, [onBox])).toEqual({ untilSettledLinkedThreads: [onBox] });
   });
 
   it("names one thread in the singular", () => {
@@ -105,6 +158,7 @@ describe("presentThreadSnoozeUntilSettled", () => {
 
 describe("resolveSnoozeUntilSettledCandidates", () => {
   const environmentId = EnvironmentId.make("environment-local");
+  const remote = EnvironmentId.make("environment-remote");
   const projectA = ProjectId.make("project-a");
   const projectB = ProjectId.make("project-b");
   type Candidate = SnoozeCandidateThread & { readonly status: SnoozeCandidateStatus };
@@ -138,7 +192,18 @@ describe("resolveSnoozeUntilSettledCandidates", () => {
     thread("archived", { updatedAt: "2026-11-19T00:00:00.000Z", archivedAt: NOW }),
     thread("elsewhere", {
       updatedAt: "2026-11-19T00:00:00.000Z",
-      environmentId: EnvironmentId.make("environment-remote"),
+      environmentId: remote,
+    }),
+    // A thread there that waits on the snoozed one: cycles are hidden only here.
+    thread("remote-waiter", {
+      updatedAt: "2026-11-03T00:00:00.000Z",
+      environmentId: remote,
+      snoozedUntil: "2026-12-01T00:00:00.000Z",
+      snoozeUntilSettledThreadIds: [ThreadId.make("snoozed")],
+    }),
+    thread("unlinked", {
+      updatedAt: "2026-11-19T00:00:00.000Z",
+      environmentId: EnvironmentId.make("environment-unlinked"),
     }),
     // Waits on "snoozed" directly, and "waits-on-waiter" through it: both would make a cycle.
     thread("waiter", {
@@ -162,13 +227,16 @@ describe("resolveSnoozeUntilSettledCandidates", () => {
     resolveSnoozeUntilSettledCandidates({
       threads,
       environmentId,
+      environmentIds: [environmentId],
       excludeThreadIds: [ThreadId.make("snoozed")],
-      selectedThreadIds: [],
+      selected: [],
       query: "",
-      projectId: null,
+      environmentFilter: null,
+      project: null,
       status: "all",
       statusOf: (candidate) => candidate.status,
       projectTitleOf: (candidate) => (candidate.projectId === projectB ? "Billing" : "Parser"),
+      environmentLabelOf: (candidate) => (candidate.environmentId === remote ? "Box" : "Mac"),
       now: NOW,
       ...overrides,
     }).map((candidate) => candidate.id);
@@ -181,10 +249,37 @@ describe("resolveSnoozeUntilSettledCandidates", () => {
     },
     {
       name: "lists selected threads first",
-      input: { selectedThreadIds: [ThreadId.make("idle-old")] },
+      input: { selected: [{ environmentId, threadId: ThreadId.make("idle-old") }] },
       expected: ["idle-old", "working-old", "idle-new", "attention", "woke-waiter"],
     },
-    { name: "filters by project", input: { projectId: projectB }, expected: ["idle-new"] },
+    {
+      name: "filters by project",
+      input: { project: { environmentId, projectId: projectB } },
+      expected: ["idle-new"],
+    },
+    {
+      name: "lists threads of linked environments too",
+      input: { environmentIds: [environmentId, remote] },
+      expected: [
+        "working-old",
+        "elsewhere",
+        "idle-new",
+        "attention",
+        "idle-old",
+        "remote-waiter",
+        "woke-waiter",
+      ],
+    },
+    {
+      name: "filters by environment",
+      input: { environmentIds: [environmentId, remote], environmentFilter: remote },
+      expected: ["elsewhere", "remote-waiter"],
+    },
+    {
+      name: "matches the environment label",
+      input: { environmentIds: [environmentId, remote], query: "box" },
+      expected: ["elsewhere", "remote-waiter"],
+    },
     {
       name: "filters by status",
       input: { status: "attention" as const },
@@ -194,7 +289,10 @@ describe("resolveSnoozeUntilSettledCandidates", () => {
     { name: "matches the project name", input: { query: "billing" }, expected: ["idle-new"] },
     {
       name: "matches message search hits",
-      input: { query: "stack trace", messageMatchThreadIds: new Set([ThreadId.make("attention")]) },
+      input: {
+        query: "stack trace",
+        messageMatchThreadKeys: new Set([`${environmentId}:attention`]),
+      },
       expected: ["attention"],
     },
   ])("$name", ({ input, expected }) => {
@@ -210,10 +308,13 @@ describe("resolveSnoozeUntilSettledCandidates", () => {
 
 describe("toggleSnoozeUntilSettledSelection", () => {
   it("unpicks at the limit but picks no more", () => {
-    const full = Array.from({ length: THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS }, (_, index) =>
-      ThreadId.make(`thread-${index}`),
+    const full = Array.from({ length: THREAD_SNOOZE_UNTIL_SETTLED_MAX_THREADS }, (_, index) => ({
+      environmentId: index % 2 === 0 ? here : box,
+      threadId: ThreadId.make(`thread-${index}`),
+    }));
+    expect(toggleSnoozeUntilSettledSelection(full, { environmentId: here, threadId: first })).toBe(
+      full,
     );
-    expect(toggleSnoozeUntilSettledSelection(full, ThreadId.make("thread-extra"))).toBe(full);
-    expect(toggleSnoozeUntilSettledSelection(full, full[0]!)).toHaveLength(full.length - 1);
+    expect(toggleSnoozeUntilSettledSelection(full, { ...full[0]! })).toHaveLength(full.length - 1);
   });
 });

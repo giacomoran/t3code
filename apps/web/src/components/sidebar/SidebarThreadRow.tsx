@@ -90,6 +90,7 @@ import { useNowMinute } from "../../hooks/useNowMinute";
 import { useNowSecond } from "../../hooks/useNowSecond";
 import { vcsEnvironment, vcsBranchRevalidation } from "../../state/vcs";
 import { useSidebarLinkedIssueState } from "../../state/issues";
+import { useEnvironmentIdentities } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { threadEnvironment } from "../../state/threads";
 import {
@@ -334,6 +335,11 @@ function SidebarThreadTooltip({
   const supportsMultiplePullRequests = useSupportsMultiplePullRequests(thread.environmentId);
   const gt = useGT();
   const m = useMessages();
+  // Names the machine of each linked thread the snooze waits on.
+  const identities = useEnvironmentIdentities();
+  const environmentLabelById = new Map(
+    identities.map((identity) => [identity.environmentId, identity.label] as const),
+  );
   return (
     <>
       <ThreadHoverCard
@@ -361,7 +367,10 @@ function SidebarThreadTooltip({
               </div>
             </div>
             {snoozeUntilSettled.waitingOn.map((waitingOn) => (
-              <div key={waitingOn.threadId} className="flex min-w-0 items-center gap-2 pl-5">
+              <div
+                key={`${waitingOn.ref.environmentId}:${waitingOn.ref.threadId}`}
+                className="flex min-w-0 items-center gap-2 pl-5"
+              >
                 {waitingOn.isSettled ? (
                   <CheckIcon
                     aria-label={gt("Settled", { $context: "thread state" })}
@@ -373,7 +382,14 @@ function SidebarThreadTooltip({
                     className="size-3 shrink-0"
                   />
                 )}
-                <div className="min-w-0 truncate text-foreground/75">{waitingOn.title}</div>
+                <div className="min-w-0 truncate text-foreground/75">
+                  {waitingOn.isLinked
+                    ? `${waitingOn.title} · ${
+                        environmentLabelById.get(waitingOn.ref.environmentId) ??
+                        waitingOn.ref.environmentId
+                      }`
+                    : waitingOn.title}
+                </div>
               </div>
             ))}
           </div>
@@ -803,7 +819,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const threadKey = scopedThreadKey(threadRef);
   // Looked up unfiltered: a thread the sidebar hides by tag still holds the snooze.
   const snoozeUntilSettledShells = useSnoozeUntilSettledShells(
-    (thread.snoozeUntilSettledThreadIds ?? []).length > 0 ? threadRef : null,
+    (thread.snoozeUntilSettledThreadIds ?? []).length > 0 ||
+      (thread.snoozeUntilSettledLinkedThreads ?? []).length > 0
+      ? threadRef
+      : null,
   );
   const snoozeUntilSettled = presentSnoozeUntilSettled(thread, {
     now: props.snoozeNow,

@@ -1,4 +1,4 @@
-import type { ThreadId } from "@t3tools/contracts";
+import type { ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 
 // Shared across hook instances so sidebar, header and menu actions invalidate each other.
 const currentActions = new Map<string, symbol>();
@@ -46,6 +46,7 @@ export type ThreadUndoStep =
       readonly action: "snooze";
       readonly snoozedUntil: string;
       readonly untilSettledThreadIds?: ReadonlyArray<ThreadId>;
+      readonly untilSettledLinkedThreads?: ReadonlyArray<ScopedThreadRef>;
     };
 
 export type ThreadUndoPlan = readonly [ThreadUndoStep, ...ThreadUndoStep[]];
@@ -59,6 +60,7 @@ export function planThreadUndo(
     readonly unsettledAt?: string | null;
     readonly snoozedUntil?: string | null;
     readonly snoozeUntilSettledThreadIds?: ReadonlyArray<ThreadId> | null;
+    readonly snoozeUntilSettledLinkedThreads?: ReadonlyArray<ScopedThreadRef> | null;
   } | null,
 ): ThreadUndoPlan {
   if (action === "snooze") return [{ action: "unsnooze" }];
@@ -68,6 +70,7 @@ export function planThreadUndo(
   };
   // Pinning clears snooze on the server; restore it after restoring pin placement.
   const untilSettledThreadIds = thread?.snoozeUntilSettledThreadIds ?? [];
+  const untilSettledLinkedThreads = thread?.snoozeUntilSettledLinkedThreads ?? [];
   const snooze =
     thread?.snoozedUntil != null
       ? [
@@ -75,6 +78,7 @@ export function planThreadUndo(
             action: "snooze" as const,
             snoozedUntil: thread.snoozedUntil,
             ...(untilSettledThreadIds.length > 0 ? { untilSettledThreadIds } : {}),
+            ...(untilSettledLinkedThreads.length > 0 ? { untilSettledLinkedThreads } : {}),
           },
         ]
       : [];
@@ -117,8 +121,13 @@ export async function executeThreadUndo<Result>(
     // A snooze can expire before Undo runs, and the server rejects an expired restore.
     // @effect-diagnostics-next-line globalDate:off
     if (step.action === "snooze" && Date.parse(step.snoozedUntil) <= Date.now()) continue;
-    // It also rejects a wait whose threads all finished meanwhile; that wait has ended too.
-    if (step.action === "snooze" && step.untilSettledThreadIds?.every(isThreadDone) === true) {
+    // It also rejects a wait whose threads here all finished meanwhile; that wait has ended too.
+    // One on linked threads is restored: the server cannot check those, and its worker wakes it.
+    if (
+      step.action === "snooze" &&
+      step.untilSettledLinkedThreads === undefined &&
+      step.untilSettledThreadIds?.every(isThreadDone) === true
+    ) {
       continue;
     }
     result = await execute(step);
