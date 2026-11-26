@@ -249,9 +249,8 @@ export function useComposerSelection(input: ComposerSelectionInput) {
   const onApplyModelProfile = (profile: ModelProfile) => {
     if (!activeThread) return;
     onProviderModelSelect(profile.instanceId, profile.model);
-    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
     setComposerDraftModelSelection(
-      threadRef,
+      composerDraftTarget,
       {
         instanceId: profile.instanceId,
         model: profile.model,
