@@ -146,4 +146,4 @@ echo "assumptions intact. $touched fork-touched file(s) saw upstream edits."
 if test $touched -gt 0
     echo "expect textual conflicts there; the fork's hunks are small and listed in ZXTRA.md."
 end
-echo "safe to proceed: git rebase upstream/main zxtra; and pnpm tc; and ./zxtra/build-and-install.fish"
+echo "safe to proceed: git rebase $ref zxtra; and pnpm tc; and ./zxtra/build-and-install.fish"

@@ -53,13 +53,15 @@ appears on every selection, including the ones made to copy a line or just to re
 
 Only the button is gone: its mount point in `MessagesTimeline`, its component,
 `AssistantSelectionToolbar.tsx`, and the selection helpers in `selectionActions.ts` that
-only it called (knip fails the pre-commit hook on an unused file or export). The rest of upstream's citation machinery — the composer
+only it called (knip fails the pre-commit hook on an unused file or export); the file keeps
+only `SELECTION_MULTI_CLICK_INTERVAL_MS`, which the terminal reads. The rest of upstream's citation machinery — the composer
 chip, the citation node, the anchors that mark assistant text as citable — is left
 untouched and simply has nothing left to trigger it. Removing that too would mean
 editing the composer, the prompt editor, and the timeline plumbing, which is a large
 fork surface for no visible gain. If upstream edits the deleted component, the rebase
-stops on a modify/delete conflict: keep it deleted. An upstream test that expects the Cite button
-(`MessagesTimeline.browser.test.tsx`) is deleted with it.
+stops on a modify/delete conflict: keep it deleted. Upstream tests of the button or its helpers
+(in `MessagesTimeline.browser.test.tsx`, and `selectionActions.browser.test.ts`) are deleted
+with it.
 
 `MessagesTimeline` still declares `onCiteAssistantText` so its callers upstream keep
 compiling unchanged. It is never read.
@@ -114,6 +116,12 @@ events, to new snoozes and unarchived waiters (plus a startup sweep), and dispat
 `thread.unsnooze { reason: "threads_settled" }`, which sets `snoozedUntil` to now instead of
 clearing it. Clients therefore see an expired timer and show the usual woke indicator,
 labelled "Threads settled".
+
+Since v0.1.12 upstream queues settle and snooze on the device while a thread's machine is
+offline (`threadTriageOutbox.ts`). A queued entry stores only the wake time, so a snooze that
+waits on threads bypasses the queue (`snoozeQueuedWhenOffline` in `threadCommands.ts`) and,
+as before, fails while offline; for the same reason "Until threads settle…" needs the operate
+grant rather than upstream's triage check (`isThreadTriageAction`).
 
 **Across machines.** A snooze can also wait on threads in environments its server links
 to (upstream's Linked environments beta): `snoozeUntilSettledLinkedThreads` on the thread,
@@ -434,7 +442,7 @@ the Linux CLI archive:
    the binary reports, so the fork needs a version of its own.
 2. Builds the web client and server bundle, the Rust resource monitor, and the single
    executable. The executable step runs on `engines.node` from the root `package.json`
-   (26.13.1 at v0.1.11, installed through mise), because `vp pack` needs a Node 25.7+ host
+   (26.13.1 at v0.1.12, installed through mise), because `vp pack` needs a Node 25.7+ host
    and `apps/server/vite.config.ts` refuses any other version.
 3. Packs the CLI archive, then refuses to install it if it lacks the fork's markers or
    reports the wrong version.
@@ -478,7 +486,7 @@ cd apps/server; and pnpm test; and cd -
 ```
 
 On the pinned Node 24, some server tests fail upstream too, because they call APIs only
-Node 25+ has (`StatementSync.stat`, `Uint8Array.fromBase64`): at v0.1.11, the turn-item
+Node 25+ has (`StatementSync.stat`, `Uint8Array.fromBase64`): at v0.1.12, the turn-item
 window test in `ProjectionStore.test.ts`, two in `Orchestrator.control-reads.test.ts` and
 the recording tests in `ServerBrowser.test.ts`. Rerun them with
 `mise exec node@<engines.node> -- pnpm exec vp test run <files>` before suspecting the fork.
