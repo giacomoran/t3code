@@ -1039,4 +1039,27 @@ describe("settle and snooze while the environment is offline", () => {
       expect(yield* queued(h)).toEqual(before);
     }),
   );
+
+  it.effect.each([
+    ["untilSettledThreadIds", [ThreadId.make("other")]],
+    [
+      "untilSettledLinkedThreads",
+      [{ environmentId: EnvironmentId.make("peer"), threadId: ThreadId.make("other") }],
+    ],
+  ] as const)("refuses a snooze with %s instead of queueing it", ([field, threads]) =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness({ connected: false });
+      const result = yield* Effect.exit(
+        h.commands.snooze.run(h.registry, {
+          ...snooze,
+          input: { ...snooze.input, [field]: threads },
+        }),
+      );
+      expect(Exit.isFailure(result) && Cause.squash(result.cause)).toMatchObject({
+        _tag: "EnvironmentRpcUnavailableError",
+      });
+      expect(yield* queued(h)).toEqual([]);
+      expect(h.registry.get(h.visibleAtom)).toBe(SNAPSHOT);
+    }),
+  );
 });

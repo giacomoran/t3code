@@ -579,10 +579,7 @@ export function createThreadEnvironmentAtoms<R, E>(
       (target.input.untilSettledThreadIds?.length || target.input.untilSettledLinkedThreads?.length
         ? commands.snooze
         : queuedSnooze
-      ).run(
-        registry,
-        target,
-      ),
+      ).run(registry, target),
   };
   const settle = optimistic.wrap(commands.settle, (thread, _input, now, accepted) =>
     applySettle(thread, now, accepted),

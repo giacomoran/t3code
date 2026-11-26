@@ -260,7 +260,6 @@ function SnoozeUntilSettledDialog(props: SnoozeUntilSettledInput) {
   };
   const confirm = (picks: ReadonlyArray<ScopedThreadRef>) => {
     if (picks.length === 0) return;
-    // oxlint-disable-next-line react/purity -- runs in an event handler (oxc#27309)
     finish(snoozeUntilSettledChoice(environmentId, picks, new Date()));
   };
   const narrow = (apply: () => void) => {
