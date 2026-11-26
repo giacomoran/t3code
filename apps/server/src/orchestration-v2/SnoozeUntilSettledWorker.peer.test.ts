@@ -328,7 +328,7 @@ it.effect.each(["linkFence", "mcpModeLimitHeader"] as const)(
             assert.equal((yield* nextFailure(reads)).code, "capability_denied");
 
             // Forgotten here, the link is gone for good, so the next read past the backoff wakes it.
-            assert.isTrue(yield* links.unlink(box.environmentId));
+            assert.isTrue((yield* links.unlink(box.environmentId)).removed);
             yield* TestClock.adjust("5 minutes");
             assert.equal((yield* nextFailure(reads)).code, "invalid_request");
             yield* nextUnsnooze(waiter, snoozed.sequence);
