@@ -745,6 +745,7 @@ it.effect.each([
       McpHttpServer.layerThreadToolkit.pipe(
         Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
         Layer.provide(Layer.mock(ScheduledTaskService.ScheduledTaskService)({})),
+        Layer.provide(Layer.mock(ProviderRegistry.ProviderRegistry)({})),
         Layer.provide(
           Layer.mock(PeerForwarding.PeerForwarding)({
             readThread: () => (typeof answer === "string" ? Effect.succeed(read(answer)) : answer),
