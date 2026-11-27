@@ -442,7 +442,7 @@ the Linux CLI archive:
    the binary reports, so the fork needs a version of its own.
 2. Builds the web client and server bundle, the Rust resource monitor, and the single
    executable. The executable step runs on `engines.node` from the root `package.json`
-   (26.13.1 at v0.1.12, installed through mise), because `vp pack` needs a Node 25.7+ host
+   (26.13.1 at v0.1.13, installed through mise), because `vp pack` needs a Node 25.7+ host
    and `apps/server/vite.config.ts` refuses any other version.
 3. Packs the CLI archive, then refuses to install it if it lacks the fork's markers or
    reports the wrong version.
@@ -486,7 +486,7 @@ cd apps/server; and pnpm test; and cd -
 ```
 
 On the pinned Node 24, some server tests fail upstream too, because they call APIs only
-Node 25+ has (`StatementSync.stat`, `Uint8Array.fromBase64`): at v0.1.12, the turn-item
+Node 25+ has (`StatementSync.stat`, `Uint8Array.fromBase64`): at v0.1.13, the turn-item
 window test in `ProjectionStore.test.ts`, two in `Orchestrator.control-reads.test.ts` and
 the recording tests in `ServerBrowser.test.ts`. Rerun them with
 `mise exec node@<engines.node> -- pnpm exec vp test run <files>` before suspecting the fork.
